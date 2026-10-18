@@ -1,0 +1,13 @@
+# dsh-writing-slots — bundle patch layer.
+#
+# 加载包主入口作为 host 半：一个普通 Cordis 插件。
+# host 半做两件事：
+#   1) 注册四个槽位工具 —— style_anchor / chapter_pack / review_pass / deai_polish
+#      （外加 slots_status 总览）。它们返回**渲染好的提示词**，由调用方执行；
+#   2) 提供 /api/dsh-writing-slots/* 接口，供浏览器半读取与操作。
+#
+# 设计要点：判据（统计、规则、契约、隔离）全在插件里算完，
+# 模型只负责「写作」与「改写」这两件真正需要模型的事。
+- insert:
+    - id: dsh-writing-slots
+      name: dsh-writing-slots

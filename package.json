@@ -1,0 +1,16 @@
+{
+  "name": "dsh-writing-slots",
+  "version": "0.1.0",
+  "description": "写作四槽位：Style Anchor（文风锚点）/ Chapter Pack（单章包）/ Review Pass（审稿通道）/ De-AI Polish（去味层）。声明式提示词模板 + 槽位契约校验，统计与规则用代码算，模型只管写作与改写。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+  "license": "MIT",
+  "engines": { "node": ">=22.5", "dsh": ">=0.1.7-rc.2" },
+  "peerDependencies": { "@deepseek-ai/cordis": "^4.0.1" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
