@@ -616,6 +616,87 @@ const main = async () => {
     ok(nums[0].value === 2, '输入框显示当前章号')
   }
 
+  console.log('\n八、清除按键与「开书后结果还在」')
+  {
+    const store = new Map()
+    const SEARCH = { keyword: '旧搜索', results: { results: [{ title: '旧书', author: '某作者', source: '某来源' }], errors: [], searched: 10 }, at: 1 }
+    store.set(LS_SEARCH, JSON.stringify(SEARCH))
+    store.set(LS_SESSION, JSON.stringify({
+      book: { source: '某来源', title: '旧书', url: '/b/1' },
+      chapters: [{ title: '第一章', url: '/c/1' }, { title: '第二章', url: '/c/2' }],
+      at: 0,
+      msg: [{ role: 'assistant', text: '第一章正文', chapter: 0, chapterTitle: '第一章' }],
+    }))
+    const onFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/reader/content')) return { ok: true, status: 200, json: async () => ({ ok: true, text: '正文。'.repeat(40) }) }
+      if (u.includes('/reader/chapters')) return { ok: true, status: 200, json: async () => ({ ok: true, chapters: [{ title: '第一章', url: '/c/1' }], count: 1 }) }
+      if (u.includes('/reader/sources')) return { ok: true, status: 200, json: async () => ({ ok: true, sources: [], count: 0, notice: null }) }
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const b = loadBundle(store, onFetch)
+    let sec = null
+    b.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec = { sp, C } }, inject: (n, cb) => cb() } })
+    b.React._reset()
+    let tree = sec.C({})
+    await b.React._flush()
+    const click = (t, label) => { const n = findFn(t, label); if (n !== null) { n.props.onClick(); return true } return false }
+    const fresh = () => { b.React._reset(); return sec.C({}) }
+    const snap = (t) => {
+      const out = { texts: [], buttons: [] }
+      const w = (node, depth = 0, seen = new Set()) => {
+        if (typeof node === 'string') { out.texts.push(node); return }
+        if (node === null || typeof node !== 'object' || depth > 60) return
+        if (Array.isArray(node)) { for (const c of node) w(c, depth, seen); return }
+        if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); w(expand(node.type, node.props), depth + 1, seen); return }
+        if (node.type === 'button' && typeof node.children?.[0] === 'string') out.buttons.push({ label: node.children[0], props: node.props })
+        for (const c of node.children ?? []) w(c, depth, seen)
+      }
+      w(t)
+      return out
+    }
+
+    // 打开阅读器 → 阅读页，应有清屏按钮
+    click(tree, '阅读器'); tree = fresh(); await b.React._flush()
+    click(tree, '阅读'); tree = fresh(); await b.React._flush()
+    let g = snap(tree)
+    const clearBtn = g.buttons.find((x) => x.label === '清屏')
+    ok(clearBtn !== undefined, `阅读页有「清屏」按钮（${g.buttons.map((x) => x.label).slice(0, 6).join(' / ')}）`)
+    ok(clearBtn.props.disabled !== true, '有对话时清屏可点')
+    ok(g.texts.some((x) => x.includes('第一章正文')), '清屏前有正文')
+
+    // 点清屏 → 对话清空，但书还在
+    clearBtn.props.onClick()
+    tree = fresh(); await b.React._flush()
+    g = snap(tree)
+    ok(!g.texts.some((x) => x.includes('第一章正文')), '**点了清屏，对话清空了**')
+    ok(g.texts.some((x) => x.includes('《旧书》还在')), '**书还在**，并提示怎么继续')
+    ok(g.buttons.find((x) => x.label === '清屏').props.disabled === true, '已经是空的，清屏按钮变灰')
+
+    // 到搜书页：结果应还在（上一轮被 openBook 清掉的 bug）
+    click(tree, '搜书'); tree = fresh(); await b.React._flush()
+    g = snap(tree)
+    ok(g.texts.some((x) => x.includes('《旧书》')), '**进搜书页，上次结果还在**')
+    ok(g.texts.some((x) => x.includes('旧搜索')), '关键词也在')
+
+    // 清掉结果按钮
+    const clearRes = g.buttons.find((x) => x.label === '清掉结果')
+    ok(clearRes !== undefined, '有「清掉结果」按钮')
+    clearRes.props.onClick()
+    tree = fresh(); await b.React._flush()
+    g = snap(tree)
+    ok(!g.texts.some((x) => x.includes('《旧书》')), '**点「清掉结果」后结果没了**')
+    ok(!store.has(LS_SEARCH), 'localStorage 里的记录也删了')
+
+    // 没了之后不该被「从记录恢复」这个效果又捞回来
+    tree = fresh(); await b.React._flush()
+    g = snap(tree)
+    ok(!g.texts.some((x) => x.includes('《旧书》')), '清掉后不会被自动捞回来')
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`)
   if (fail > 0) process.exit(1)
 }
