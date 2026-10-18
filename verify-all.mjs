@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+/**
+ * 跑全部套件。
+ *
+ *   node verify-all.mjs
+ */
+import { spawnSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = dirname(fileURLToPath(import.meta.url))
+
+const SUITES = [
+  ['verify.mjs', '宿主半（槽位契约、统计、审稿隔离、去味、故事引擎、读者、确定性检查）'],
+  ['verify-continue.mjs', '自动继跑（max-tokens 触发、去抖、上限、通知、运行时开关）'],
+  ['verify-client.mjs', '浏览器半（渲染、七个槽位、页签随开关显隐）'],
+]
+
+let failed = 0
+for (const [file, label] of SUITES) {
+  const started = Date.now()
+  const r = spawnSync(process.execPath, [join(here, file)], { encoding: 'utf8' })
+  const ms = Date.now() - started
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
+  const line = (out.match(/(?:结果：)?(\d+) passed(?:,| \/)? ?(\d+)? failed/) ?? [])[0]
+    ?? (out.match(/(\d+) passed, (\d+) failed/) ?? [])[0]
+    ?? '(未取到结果)'
+  if (r.status !== 0) failed += 1
+  console.log(`${r.status === 0 ? '✓' : '✗'} ${file.padEnd(20)} ${label}`)
+  console.log(`  ${line.trim()}  (${ms}ms)`)
+}
+
+console.log(failed === 0 ? '\n✅ 全部套件通过' : `\n❌ ${failed} 个套件失败`)
+process.exit(failed === 0 ? 0 : 1)

@@ -31,6 +31,7 @@
 ## 四个工具
 
 ```
+auto_continue(action: status | enable | disable | configure | reset, ...) → 自动继跑的开关与配置
 style_anchor(projectDir?, samples, genreTags?)      → 渲染好的分析提示词 + 可直接落盘的 style-guide.md
 world_builder(projectDir?, genre, validate?)        → 世界观提示词；validate 可校验代价/限制/条数/字数
 character_designer(projectDir?, character, validate?) → 人物卡提示词；validate 可校验六项与三档情绪
@@ -304,7 +305,9 @@ obstacle 抽象（「命运」）        → obstacle_not_concrete
 
 装好并重启后，设置页左侧导航会多一项「**写作槽位**」。
 
-面板是两栏：
+面板顶层是两个页签：**写作槽位**（常驻）与**自动继跑**（只在启用时出现，见下）。
+
+写作槽位页签是两栏：
 
 - **左栏**：七个槽位的卡片，带就绪状态（缺 `style-guide.md` 或 `world-bible.md` 会显示未就绪）
 - **右栏**：选中模块的**契约**（必填 / 自动注入 / 可选）、操作表单、以及渲染出来的提示词（可复制）
@@ -328,12 +331,69 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 
 然后重启 DSH。插件目录不在 HMR 监视范围内，改代码必须重启才生效。
 
+## 自动继跑
+
+从 `dsh-auto-continue` 移植进来的。写小说（或其他长输出任务）时，模型一轮输出撞到字数上限（`turn/end` 的 `reason=max-tokens`）被截断，插件自动往**同一个活跃会话**注入「继续写」并唤醒下一轮 —— 不用手动敲「继续」。
+
+### 为什么得自己写
+
+- 官方 `@deepseek-ai/dsh-goal-round-driver` 见到 `max-tokens` 会 **disarm**（把「输出被截断」当成需要人工判断的事）
+- 社区 `@weibaohui/dsh-continue` 只处理 `error` / `interrupted`，对 `max-tokens` 明确 `skip`
+
+所以「每章写到上限后接着写」这个场景没人覆盖。
+
+### 客户端页签：停用即隐藏
+
+设置页里是**两个顶层页签**：
+
+- **写作槽位**（常驻）
+- **自动继跑**（**只在启用时出现**）
+
+停用后这个页签从客户端消失，界面回到写作槽位。要重新启用，用 `auto_continue` 工具（`action=enable`），或改配置重启。
+
+这是刻意的：一个不工作的功能不该占着导航。
+
+### 移植时保留的几处硬约束
+
+这些是原插件踩出来的，一条都不能松：
+
+| 约束 | 为什么 |
+|---|---|
+| `source.kind` 必须非空字符串 | 会话准入会拒空 kind。用自己的生产者 kind，不用已移除的 `plugin` 兜底 |
+| `agent.followup(...)` 延到 `setTimeout(0)` | 宿主拒「分发窗口内的重入 append」 |
+| `minGapMs` 去抖 | 一轮里可能有多个 max-tokens 步，不去抖会连发 |
+| `maxFollowupsPerSession`（0=不限） | 防止无限撞顶把额度烧光 |
+| 通知带 `role` 与 `id` + `surfaceOp: 'append'` | 少一样宿主就丢掉（旧版就是这么坏的） |
+| 排除 `subagent` 来源的会话 | 子代理归父代理管，不擅自唤醒 |
+
+### 比原插件多的两样
+
+- **运行时可开关**（页签上的按钮），不用改配置重启 —— 且停用时会**清掉挂起的定时器**，关了不会还投递一次
+- **可见的活动记录**：累计次数、各会话计数、最近活动、上次跳过的原因
+
+计数是**进程内的实时状态，不落盘**，重启清零。
+
+### 工具
+
+```
+auto_continue(action: status | enable | disable | configure | reset, prompt?, minGapMs?, maxFollowupsPerSession?, notify?, session?)
+```
+
+### 客户端页签（一）：自动继跑
+
+只在启用时出现。开关 + 配置（注入文本 / 去抖 / 上限 / 通知）+ 累计卡片 + 各会话计数 + 最近活动。
+
 ## 自测
 
 ```bash
-node verify.mjs          # 294 项（宿主半）
-node verify-client.mjs   # 29 项（浏览器半）
+node verify-all.mjs      # 一键跑全部
 ```
+
+| 套件 | 项数 | 覆盖 |
+|---|---|---|
+| `verify.mjs` | 294 | 宿主半 |
+| `verify-continue.mjs` | 50 | 自动继跑 |
+| `verify-client.mjs` | 35 | 浏览器半 |
 
 覆盖：槽位引擎（含循环变量与截断）、统计正确性、对话识别（直角引号）、禁忌清单的 0 命中判据、细纲与前情提要解析（上一章必须严格小于目标章）、审稿契约与隔离（七个维度、四档严重度、非原子指令）、七条去味规则（含「知道」不误报、普通三连不误报）、世界观与人物的结构校验、允许清单、规则 id 与禁忌表对齐、
 读者通道（人格是生活不是参数、HARD_RULE 三禁、越权扫描、允许「没感觉」、三种汇总判断）、

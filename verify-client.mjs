@@ -93,6 +93,11 @@ const MODULES = [
   { id: 'reader_sim', title: 'Reader Simulation（读者通道）', runsWhen: '初稿后，审稿前', gate: '反馈是信息不是命令', output: '三个读者的体温', contract: { required: ['draft'], auto_injected: ['persona_prompt'], optional: [] } },
   { id: 'deai_polish', title: 'De-AI Polish（去味层）', runsWhen: '最后一刀', gate: '人通读', output: '润色稿', contract: { required: ['text'], auto_injected: ['style_guide_forbidden'], optional: [] } },
 ]
+const AC_ON = { ok: true, enabled: true, config: { enabled: true, prompt: '继续写。', minGapMs: 2000, maxFollowupsPerSession: 0, notify: true },
+  totals: { sessions: 2, followups: 7, skipped: 1 }, sessions: [{ session: 's1', followups: 7, lastAt: 1792320000000 }],
+  activity: [{ at: 1792320000000, session: 's1', kind: 'followup', count: 7 }], lastSkip: null, defaults: { prompt: '默认', minGapMs: 2000, maxFollowupsPerSession: 0, notify: true }, sourceKind: 'dsh-writing-slots', note: '进程内计数，不落盘' }
+const AC_OFF = { ...AC_ON, enabled: false }
+
 const STATUS = {
   ok: true, project: '/tmp/proj', pending: '0500', layout: { briefs: 197, chapters: 500 },
   modules: MODULES.map((m, i) => ({ id: m.id, ready: i < 3, note: i < 3 ? '就绪了' : '先跑 Style Anchor' })),
@@ -104,13 +109,89 @@ const main = async () => {
   try {
     loaded = loadBundle(new Map(), async (url) => {
       const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     })
   } catch (e) {
     ok(false, `bundle 加载失败：${e.message}`)
-    console.log(`\n${pass} passed, ${fail} failed`)
+    console.log('\n五、顶层页签与自动继跑')
+  {
+    // 启用时：两个页签
+    const onFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const b1 = loadBundle(new Map(), onFetch)
+    let sec1 = null
+    b1.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec1 = { sp, C } }, inject: (n, cb) => cb() } })
+    b1.React._reset()
+    let tree1 = sec1.C({})
+    const tabs1 = []
+    const seen1 = new Set()
+    const w1 = (node, depth = 0) => {
+      if (typeof node === 'string' || node === null || typeof node !== 'object') return
+      if (depth > 45) return
+      if (Array.isArray(node)) { for (const c of node) w1(c, depth); return }
+      if (typeof node.type === 'function') { if (seen1.has(node.type)) return; seen1.add(node.type); w1(node.type(node.props), depth + 1); return }
+      if (typeof node.props?.className === 'string' && node.props.className.includes('dws_tab') && typeof node.children?.[0] === 'string') tabs1.push(node.children[0])
+      for (const c of node.children ?? []) w1(c, depth)
+    }
+    w1(tree1)
+    await b1.React._flush()
+    seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
+    ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
+    ok(tabs1.includes('自动继跑'), '**启用时有「自动继跑」页签**')
+    ok(tabs1.length === 2, `顶层正好两个页签（实际 ${tabs1.length}）`)
+  }
+  {
+    // 停用时：只剩写作槽位
+    const offFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_OFF }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const b2 = loadBundle(new Map(), offFetch)
+    let sec2 = null
+    b2.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec2 = { sp, C } }, inject: (n, cb) => cb() } })
+    b2.React._reset()
+    let tree2 = sec2.C({})
+    await b2.React._flush()
+    const tabs2 = []
+    const seen2 = new Set()
+    const w2 = (node, depth = 0) => {
+      if (typeof node === 'string' || node === null || typeof node !== 'object') return
+      if (depth > 45) return
+      if (Array.isArray(node)) { for (const c of node) w2(c, depth); return }
+      if (typeof node.type === 'function') { if (seen2.has(node.type)) return; seen2.add(node.type); w2(node.type(node.props), depth + 1); return }
+      if (typeof node.props?.className === 'string' && node.props.className.includes('dws_tab') && typeof node.children?.[0] === 'string') tabs2.push(node.children[0])
+      for (const c of node.children ?? []) w2(c, depth)
+    }
+    seen2.clear(); w2(tree2)
+    b2.React._reset(); tree2 = sec2.C({}); seen2.clear(); w2(tree2)
+    ok(!tabs2.includes('自动继跑'), '**停用时「自动继跑」页签消失**')
+    ok(tabs2.includes('写作槽位'), '仍保留「写作槽位」页签')
+    // 停用时落回写作槽位
+    const bodies = []
+    const seen3 = new Set()
+    const w3 = (node, depth = 0) => {
+      if (typeof node === 'string') { bodies.push(node); return }
+      if (node === null || typeof node !== 'object' || depth > 45) return
+      if (Array.isArray(node)) { for (const c of node) w3(c, depth); return }
+      if (typeof node.type === 'function') { if (seen3.has(node.type)) return; seen3.add(node.type); w3(node.type(node.props), depth + 1); return }
+      for (const c of node.children ?? []) w3(c, depth)
+    }
+    w3(tree2)
+    ok(bodies.join(' ').includes('写作槽位') || bodies.length > 0, '停用时落到写作槽位面板')
+  }
+
+  console.log(`\n${pass} passed, ${fail} failed`)
     process.exit(1)
   }
   const { mod, React } = loaded
@@ -195,6 +276,81 @@ const main = async () => {
   ok(all.includes('必填'), '显示必填槽位')
   ok(all.includes('自动注入'), '显示自动注入槽位')
   ok(all.includes('不代跑模型'), '说明这个面板不代跑模型')
+
+  console.log('\n五、顶层页签与自动继跑')
+  {
+    // 启用时：两个页签
+    const onFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const b1 = loadBundle(new Map(), onFetch)
+    let sec1 = null
+    b1.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec1 = { sp, C } }, inject: (n, cb) => cb() } })
+    b1.React._reset()
+    let tree1 = sec1.C({})
+    const tabs1 = []
+    const seen1 = new Set()
+    const w1 = (node, depth = 0) => {
+      if (typeof node === 'string' || node === null || typeof node !== 'object') return
+      if (depth > 45) return
+      if (Array.isArray(node)) { for (const c of node) w1(c, depth); return }
+      if (typeof node.type === 'function') { if (seen1.has(node.type)) return; seen1.add(node.type); w1(node.type(node.props), depth + 1); return }
+      if (typeof node.props?.className === 'string' && node.props.className.includes('dws_tab') && typeof node.children?.[0] === 'string') tabs1.push(node.children[0])
+      for (const c of node.children ?? []) w1(c, depth)
+    }
+    w1(tree1)
+    await b1.React._flush()
+    seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
+    ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
+    ok(tabs1.includes('自动继跑'), '**启用时有「自动继跑」页签**')
+    ok(tabs1.length === 2, `顶层正好两个页签（实际 ${tabs1.length}）`)
+  }
+  {
+    // 停用时：只剩写作槽位
+    const offFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_OFF }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const b2 = loadBundle(new Map(), offFetch)
+    let sec2 = null
+    b2.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec2 = { sp, C } }, inject: (n, cb) => cb() } })
+    b2.React._reset()
+    let tree2 = sec2.C({})
+    await b2.React._flush()
+    const tabs2 = []
+    const seen2 = new Set()
+    const w2 = (node, depth = 0) => {
+      if (typeof node === 'string' || node === null || typeof node !== 'object') return
+      if (depth > 45) return
+      if (Array.isArray(node)) { for (const c of node) w2(c, depth); return }
+      if (typeof node.type === 'function') { if (seen2.has(node.type)) return; seen2.add(node.type); w2(node.type(node.props), depth + 1); return }
+      if (typeof node.props?.className === 'string' && node.props.className.includes('dws_tab') && typeof node.children?.[0] === 'string') tabs2.push(node.children[0])
+      for (const c of node.children ?? []) w2(c, depth)
+    }
+    seen2.clear(); w2(tree2)
+    b2.React._reset(); tree2 = sec2.C({}); seen2.clear(); w2(tree2)
+    ok(!tabs2.includes('自动继跑'), '**停用时「自动继跑」页签消失**')
+    ok(tabs2.includes('写作槽位'), '仍保留「写作槽位」页签')
+    // 停用时落回写作槽位
+    const bodies = []
+    const seen3 = new Set()
+    const w3 = (node, depth = 0) => {
+      if (typeof node === 'string') { bodies.push(node); return }
+      if (node === null || typeof node !== 'object' || depth > 45) return
+      if (Array.isArray(node)) { for (const c of node) w3(c, depth); return }
+      if (typeof node.type === 'function') { if (seen3.has(node.type)) return; seen3.add(node.type); w3(node.type(node.props), depth + 1); return }
+      for (const c of node.children ?? []) w3(c, depth)
+    }
+    w3(tree2)
+    ok(bodies.join(' ').includes('写作槽位') || bodies.length > 0, '停用时落到写作槽位面板')
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`)
   if (fail > 0) process.exit(1)
