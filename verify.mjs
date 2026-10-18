@@ -33,6 +33,11 @@ import { validateWorld, validateCharacter, splitSections, WORLD_SECTIONS, CHARAC
 import { ALLOWED, looksLikeFragment } from './lib/polish.js'
 import { runWorldBuilder, checkWorld, runCharacterDesigner, checkCharacter, WORLD_BIBLE_NAME } from './lib/pipeline.js'
 import { AI_TELLS } from './lib/style.js'
+import { READERS, reader, promptFor, validateReaderOutput, summarize, BANNED_TERMS, CONTINUE_VALUES } from './lib/reader.js'
+import { validatePressureConfig, pressureSlice, validateInfoGap, validateScenes, validateScene, validateCurve, temperatureAt, PRESSURE_TIERS } from './lib/story.js'
+import { check as sanityCheck, format as formatSanity, ENGINEERING_TERMS } from './lib/sanity.js'
+import { runReaderSim, summarizeReaders, checkReaderOutput } from './lib/pipeline.js'
+import { READER_SIM } from './lib/prompts.js'
 
 let pass = 0
 let fail = 0
@@ -300,16 +305,28 @@ const main = async () => {
     ok(v.ok === true, '合规样例通过')
     ok(v.stats.fatal === 1 && v.stats.pass === 1, '统计正确')
     ok(v.verdict === 'reject', '有 fatal 就打回')
-    ok(v.uncovered.length === 2, '报出未覆盖的维度')
+    // 7 个维度里只给了 2 个 → 5 个未覆盖。三个新维度是按需启用的，
+    // 没给共情锚点/信息差矩阵时它们无从判定，但必须显式报出来，不能假装查过。
+    ok(v.uncovered.length === 5, `报出未覆盖的维度（实际 ${v.uncovered.length}）`)
 
-    const v2 = validateFindings([
-      { dimension: 'character_consistency', severity: 'warning', location: '第 3 段', finding: 'x', action: 'y' },
-      { dimension: 'information_density', severity: 'pass', finding: 'u' },
-      { dimension: 'factual_contradiction', severity: 'pass', finding: 'v' },
-      { dimension: 'hook_effectiveness', severity: 'pass', finding: 'w' },
-    ])
+    const v2 = validateFindings(DIMENSIONS.map((d) => (
+      d === 'character_consistency'
+        ? { dimension: d, severity: 'warning', location: '第 3 段', finding: 'x', action: 'y' }
+        : { dimension: d, severity: 'pass', finding: 'ok' }
+    )))
     ok(v2.verdict === 'revise', '只有 warning 时是「修改后过审」')
-    ok(v2.uncovered.length === 0, '四维度都覆盖')
+    ok(v2.uncovered.length === 0, `七个维度都覆盖${v2.uncovered.length ? '（漏：' + v2.uncovered.join(',') + '）' : ''}`)
+
+    // 四档严重度 + category/evidence/fix_hint 也要认
+    const vNew = validateFindings([
+      { dimension: 'empathy_test', severity: 'critical', category: 'character', location: '第 12 段',
+        description: '整章没有一处能让读者对上自己的体验', evidence: '他走进屋子，坐下。', fix_hint: '补一个日常脆弱的瞬间' },
+    ])
+    ok(vNew.ok === true, '新 schema（critical/category/evidence/fix_hint）通过')
+    ok(vNew.stats.blocking === 1 && vNew.verdict === 'reject', 'critical 默认阻断')
+    ok(vNew.findings[0].evidence.includes('他走进屋子'), 'evidence 被保留')
+    const badCat = validateFindings([{ dimension: 'empathy_test', severity: 'pass', finding: 'x', category: '乱写的' }])
+    ok(badCat.ok === false && badCat.errors.some((e) => e.includes('category')), '非法 category 被拒')
 
     // 逐项拦截
     const e1 = validateFindings([{ dimension: '文笔', severity: 'fatal', location: 'x', finding: 'y', action: 'z' }])
@@ -447,8 +464,8 @@ const main = async () => {
       await writeFile(join(root, WORLD_BIBLE_NAME), '# 世界观\n')
       const st = await moduleStatus(root)
       const notReady = st.modules.filter((m) => m.ready !== true)
-      ok(st.modules.length === 6, `总览列出 6 个模块（实际 ${st.modules.length}）`)
-      ok(notReady.length === 0, `六个模块全部就绪${notReady.length > 0 ? `（未就绪：${notReady.map((m) => m.id + ':' + m.note).join('；')}）` : ''}`)
+      ok(st.modules.length === 7, `总览列出 7 个模块（实际 ${st.modules.length}）`)
+      ok(notReady.length === 0, `七个模块全部就绪${notReady.length > 0 ? `（未就绪：${notReady.map((m) => m.id + ':' + m.note).join('；')}）` : ''}`)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -581,10 +598,207 @@ const main = async () => {
     ok(typeof d.fragmentCount === 'number' && d.fragmentCount >= 1, '数出允许的断句数')
   }
 
+  // ————— 六点七、读者通道 —————
+  console.log('\n六点七、读者通道')
+  {
+    ok(READERS.length === 3, '三个读者人格')
+    ok(READERS.map((r) => r.id).join(',') === 'commuter,rereader,harsh', 'id 依次是通勤/回头/苛刻')
+    ok(READERS.every((r) => r.persona.includes('名字：')), '每个人格都有名字（不是抽象画像）')
+    ok(READERS.every((r) => /习惯|阈值|信号/.test(r.persona)), '人格写的是生活习惯，不是参数')
+    ok(reader('commuter').name === '小陈', '按 id 取人格')
+    ok(reader('nope') === null, '未知 id 返回 null')
+
+    // HARD_RULE 是这条通道的立身之本
+    const pr = promptFor(READERS[0], '0025')
+    ok(pr.includes('HARD_RULE'), '提示词含 HARD_RULE')
+    ok(pr.includes('不是编辑，不是评论者'), '钉死了身份')
+    ok(pr.includes('禁止给出修改建议'), '禁止修改建议')
+    ok(pr.includes('文学批评术语'), '禁止批评术语')
+    ok(pr.includes('重新做回读者'), '发现自己在分析时要拉回来')
+    ok(pr.includes('把它改写成'), '把「该改」改写成「我希望」')
+    ok(pr.includes('空的 memorable_line 是有效信号'), '明确允许「没感觉」')
+    ok(pr.includes('第 0025 章'), '注入了章号')
+    ok(CONTINUE_VALUES.join(',') === 'yes,no,maybe', '锚点只有三值，不给中间态')
+  }
+  {
+    // 越权扫描
+    const good = { first_person_reaction: '我读到第三段就走神了，那段在讲他怎么算账。读完我想点下一章，因为我想知道那袋米去哪了。', anchors: { continue_reading: 'yes', memorable_line: '他把冷掉的茶倒了重新泡一杯', skip_urge_location: '第 3 段' } }
+    const v = validateReaderOutput(good)
+    ok(v.ok === true, `合规产出通过${v.ok ? '' : '：' + v.errors.join('；')}`)
+    ok(v.anchors.continue_reading === 'yes', '锚点解析正确')
+    ok(v.noMemorable === false, '有记忆点')
+    ok(v.anchors.memorable_line.includes('冷掉的茶'), '引出原文')
+
+    const crit = { first_person_reaction: '这一章的节奏有问题，人物弧光不明显，建议修改第 3 段。', anchors: { continue_reading: 'no', memorable_line: null, skip_urge_location: null } }
+    const v2 = validateReaderOutput(crit)
+    ok(v2.ok === false, '用了批评术语 + 给了建议 → 不合规')
+    ok(v2.errors.some((e) => e.includes('文学批评术语')), '报出批评术语')
+    ok(v2.errors.some((e) => e.includes('修改建议')), '报出修改建议')
+
+    // 「没感觉」必须被接受
+    const empty = { first_person_reaction: '我读完了。没什么特别的。', anchors: { continue_reading: 'maybe', memorable_line: null, skip_urge_location: null } }
+    const v3 = validateReaderOutput(empty)
+    ok(v3.ok === true, '「没记住任何句子」是有效输出，不报错')
+    ok(v3.noMemorable === true, '标出 noMemorable')
+
+    const badCont = { first_person_reaction: '我还行。', anchors: { continue_reading: '还行', memorable_line: null, skip_urge_location: null } }
+    ok(validateReaderOutput(badCont).ok === false, '非法 continue_reading 被拒')
+
+    // 缺字段 ≠ 没有
+    const missing = { first_person_reaction: '我读完了。', anchors: { continue_reading: 'yes' } }
+    const v4 = validateReaderOutput(missing)
+    ok(v4.warnings.some((w) => w.includes('memorable_line')), '缺字段给提醒（没有也要显式 null）')
+  }
+  {
+    // 汇总：三种读者的组合判断
+    const all = [
+      { id: 'commuter', name: '小陈', verdict: { anchors: { continue_reading: 'no', memorable_line: null, skip_urge_location: '第 5 段' } } },
+      { id: 'rereader', name: '阿岚', verdict: { anchors: { continue_reading: 'no', memorable_line: null, skip_urge_location: null } } },
+      { id: 'harsh', name: '老周', verdict: { anchors: { continue_reading: 'no', memorable_line: null, skip_urge_location: null } } },
+    ]
+    const s1 = summarize(all)
+    ok(s1.reading.includes('结构问题'), '三人都不想读 → 提示可能是结构问题')
+    const onlyCommuter = [
+      { id: 'commuter', name: '小陈', verdict: { anchors: { continue_reading: 'no', memorable_line: null, skip_urge_location: null } } },
+      { id: 'rereader', name: '阿岚', verdict: { anchors: { continue_reading: 'yes', memorable_line: '她把碗放回架上' } } },
+      { id: 'harsh', name: '老周', verdict: { anchors: { continue_reading: 'yes', memorable_line: null } } },
+    ]
+    const s2 = summarize(onlyCommuter)
+    ok(s2.reading.includes('偏静') || s2.reading.includes('由你定'), '只有通勤读者不想读 → 交给作者判断')
+    ok(s2.verdictText.includes('信息，不是命令'), '明确说反馈不是命令')
+    const none = summarize([{ id: 'harsh', name: '老周', verdict: { anchors: { continue_reading: 'yes', memorable_line: null } } }])
+    ok(none.reading.includes('留不下'), '读得下去但没记忆点 → 指出问题')
+  }
+  {
+    // 真机组装
+    const root = await makeProject({ withChapter: true })
+    try {
+      const r = await runReaderSim(root, 25, { readers: ['commuter'] })
+      ok(r.ok === true, '读者通道可组装')
+      ok(r.prompts[0].prompt.includes('HARD_RULE'), '提示词是完整的人格提示词')
+      ok(r.prompts[0].prompt.includes('他仿佛听见了什么'), '初稿被注入')
+      ok(r.orderNote.includes('未修改的初稿'), '说明必须读未改的稿')
+      const bad = await runReaderSim(root, 25, { readers: ['nope'] })
+      ok(bad.ok === false && bad.unknown.includes('nope'), '未知读者 id 被拒')
+      ok(checkReaderOutput({ first_person_reaction: '我读完了。', anchors: { continue_reading: 'yes', memorable_line: null, skip_urge_location: null } }).ok === true, 'checkReaderOutput 可用')
+      ok(summarizeReaders([]).list.length === 0, 'summarizeReaders 可用')
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
+
+  // ————— 六点八、故事引擎 —————
+  console.log('\n六点八、故事引擎')
+  {
+    // 压力反应表
+    const good = {
+      pressure_tier_1: '嘴上不饶人，手上照做',
+      pressure_tier_2: '先退一步，回去算账',
+      pressure_tier_3: '突然沉默，然后用最平静的语气说最狠的话',
+      pressure_tier_4: '不哭，开始整理东西',
+      hidden_motive: '所有强硬都是在预防被抛弃',
+      empathy_anchor: '在群里发完消息后反复看有没有人回',
+      voice_samples: Array.from({ length: 12 }, (_, i) => `样本${i}`),
+    }
+    const v = validatePressureConfig(good)
+    ok(v.ok === true, `合规压力表通过${v.ok ? '' : '：' + v.errors.join('；')}`)
+    ok(PRESSURE_TIERS.length === 4, '四档压力')
+    const missing = validatePressureConfig({})
+    ok(missing.ok === false, '缺项时打回')
+    ok(missing.errors.some((e) => e.includes('档位 3')), '报出缺档位 3')
+    ok(missing.errors.some((e) => e.includes('共情锚点')), '报出缺共情锚点')
+    ok(missing.errors.some((e) => e.includes('隐藏动机')), '报出缺隐藏动机')
+
+    // 注入裁剪：只给当前档位那一行
+    const slice = pressureSlice(good, 3)
+    ok(slice.ok === true, '按档位裁剪成功')
+    ok(slice.slice.pressure_reaction.includes('沉默'), '给的是档位 3 那一行')
+    ok(slice.slice.pressure_reaction !== good.pressure_tier_1, '不是把四档全塞进去')
+    ok(slice.slice.hidden_motive !== undefined && slice.slice.empathy_anchor !== undefined, '带隐藏动机与共情锚点')
+    ok(slice.slice.appearance === undefined && slice.slice.background === undefined, '**不带档案层**（外貌/背景只给审稿用）')
+    ok(pressureSlice(good, 9).ok === false, '非法档位被拒')
+
+    // 信息差矩阵
+    const gap = {
+      reader_knows_character_doesnt: ['地窖里有四十一袋'],
+      character_knows_reader_doesnt: [],
+      neither_knows: ['裴典背后是谁'],
+      intended_shift: { revealed_to_character: [], newly_planted: ['孟大是耳目'], neither_knows_lit: [] },
+    }
+    const g = validateInfoGap(gap)
+    ok(g.ok === true, '合规信息差矩阵通过')
+    ok(g.warnings.some((w) => w.includes('只埋')), '只埋不收时提醒')
+    const noShift = validateInfoGap({ reader_knows_character_doesnt: ['x'], intended_shift: { revealed_to_character: [], newly_planted: [], neither_knows_lit: [] } })
+    ok(noShift.ok === false, '配比没变化时打回')
+    ok(noShift.errors.some((e) => e.includes('可以被跳过')), '说明这一章可被跳过')
+    ok(validateInfoGap({}).ok === false, '空矩阵打回')
+  }
+  {
+    // 欲望-障碍-代价：水场景要变成可拦截的输入错误
+    const okScene = { desire: '把那袋米搬进屋', obstacle: '二更后墙根有巡夫', cost_if_fail: '被当成夜盗锁拿到案', outcome: '部分得到', cost_paid: '左臂被门闩压伤' }
+    ok(validateScene(okScene, 0).ok === true, '合规场景通过')
+    const abstractCost = validateScene({ ...okScene, cost_if_fail: '失去一切' }, 0)
+    ok(abstractCost.ok === false && abstractCost.error === 'cost_not_concrete', '抽象代价被拒（cost_not_concrete）')
+    ok(validateScene({ ...okScene, desire: '想变强' }, 0).error === 'desire_not_concrete', '抽象欲望被拒')
+    ok(validateScene({ ...okScene, obstacle: '命运' }, 0).error === 'obstacle_not_concrete', '抽象障碍被拒')
+    ok(validateScene({ ...okScene, outcome: '得到', cost_paid: '' }, 0).error === 'cost_free_scene', '无代价场景被拒')
+    ok(validateScene({ ...okScene, outcome: '大获全胜' }, 0).error === 'bad_outcome', '非法 outcome 被拒')
+
+    const scenes = validateScenes([okScene, { ...okScene, cost_if_fail: '' }])
+    ok(scenes.ok === false, '批量校验能挑出坏场景')
+    ok(scenes.errors.length === 1 && scenes.errors[0].includes('场景 2'), '报出是第几个场景')
+    ok(validateScenes([]).ok === false, '没有场景表时打回')
+    ok(validateScenes([okScene]).hasCostMoment === true, '认出「有代价的时刻」')
+  }
+  {
+    // 温度曲线
+    const curve = { volume: 1, curve: { 1: { target: '不安' }, 2: { target: '紧张' }, 3: { target: '憋屈' }, 4: { target: '释放' } } }
+    const c = validateCurve(curve)
+    ok(c.ok === true, '合规曲线通过')
+    ok(c.entries.length === 4, '解析出 4 章')
+    const flat = validateCurve({ curve: { 1: { target: '紧张' }, 2: { target: '紧张' }, 3: { target: '紧张' }, 4: { target: '释放' } } })
+    ok(flat.warnings.some((w) => w.includes('连续三章')), '连续三章同温时警告')
+    ok(validateCurve({}).ok === false, '空曲线打回')
+    ok(temperatureAt(curve, 2).target === '紧张', '取某章目标温度')
+    ok(temperatureAt(curve, 99).ok === false, '取不存在的章号时如实报错')
+  }
+
+  // ————— 六点九、确定性检查 —————
+  console.log('\n六点九、确定性检查')
+  {
+    const clean = '他走进屋子。屋里很暗。\n\n他摸到墙，找到灯绳，拉了一下。灯没亮。'
+    ok(sanityCheck(clean, { minChars: 10 }).pass === true, '干净正文通过')
+
+    const truncated = '他走进屋子。屋里很暗。他摸到墙，找到灯绳，拉了一下，灯没亮。他'
+    const t = sanityCheck(truncated, { minChars: 10 })
+    ok(t.pass === false, '结尾没收尾时阻断')
+    ok(t.issues.some((i) => i.id === 'truncated'), '认出截断')
+    ok(t.issues.find((i) => i.id === 'truncated').severity === 'critical', '截断是 critical')
+
+    const short = sanityCheck('他走进屋子。', { minChars: 300 })
+    ok(short.issues.some((i) => i.id === 'too-short'), '太短时标出（多半被掐断）')
+
+    const leaky = '本章任务是要让读者看见信息差的变化。他走进屋子。'
+    const l = sanityCheck(leaky, { minChars: 10 })
+    ok(l.issues.some((i) => i.id === 'engineering-leak'), '认出工程词泄漏')
+    ok(l.pass === true, '工程词是 warning，不阻断（但要报出来）')
+
+    const q = sanityCheck('"你来了。他站起来。', { minChars: 10 })
+    ok(q.issues.some((i) => i.id === 'unclosed-quote'), '认出没关上的引号')
+
+    const ph = sanityCheck('他走进{chapter_no}屋子。', { minChars: 10 })
+    ok(ph.issues.some((i) => i.id === 'placeholder-left'), '认出占位符残留')
+    ok(ph.pass === false, '占位符残留阻断')
+
+    // allowedTerms 放行
+    const allowed = sanityCheck('他说"这是伏笔"。他站起来。', { minChars: 10, allowedTerms: ['伏笔'] })
+    ok(!allowed.issues.some((i) => i.id === 'engineering-leak'), 'allowedTerms 能放行项目本来在用的词')
+    ok(ENGINEERING_TERMS.includes('本章'), '工程词表含「本章」')
+    ok(formatSanity(sanityCheck(clean, { minChars: 10 })).includes('通过'), 'format 可读')
+  }
+
   // ————— 七、模板与契约自洽 —————
   console.log('\n七、模板与契约自洽')
   {
-    ok(MODULES.length === 6, '六个模块（上游三个 + 任务层三个）')
+    ok(MODULES.length === 7, `七个模块（实际 ${MODULES.length}）`)
     ok(UPSTREAM_MODULES.length === 3, '上游模块三个：文风 / 世界观 / 人物')
     for (const m of MODULES) {
       const { slots } = collectSlots(m.template)

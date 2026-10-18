@@ -90,6 +90,7 @@ const MODULES = [
   { id: 'character_designer', title: 'Character Designer（人物）', runsWhen: '项目初始化时', gate: '人审「三者的冲突是否真的成立」', output: '人物卡', contract: { required: ['character'], auto_injected: [], optional: ['role'] } },
   { id: 'chapter_pack', title: 'Chapter Pack（单章包）', runsWhen: '每章动笔前', gate: '人审章尾钩子和情感落点', output: '初稿正文', contract: { required: ['chapter_no'], auto_injected: ['style_guide_digest'], optional: [] } },
   { id: 'review_pass', title: 'Review Pass（审稿通道）', runsWhen: '初稿完成后，独立会话', gate: '人决定哪些改、哪些不改', output: 'JSON 问题清单', contract: { required: ['draft'], auto_injected: ['bible_snapshot', 'prev_summary'], optional: [] } },
+  { id: 'reader_sim', title: 'Reader Simulation（读者通道）', runsWhen: '初稿后，审稿前', gate: '反馈是信息不是命令', output: '三个读者的体温', contract: { required: ['draft'], auto_injected: ['persona_prompt'], optional: [] } },
   { id: 'deai_polish', title: 'De-AI Polish（去味层）', runsWhen: '最后一刀', gate: '人通读', output: '润色稿', contract: { required: ['text'], auto_injected: ['style_guide_forbidden'], optional: [] } },
 ]
 const STATUS = {
@@ -178,7 +179,7 @@ const main = async () => {
   walk(tree)
 
   console.log('\n三、六个槽位都出来')
-  ok(collect.cards.length === 6, `渲染出 6 张模块卡（实际 ${collect.cards.length}）`)
+  ok(collect.cards.length === 7, `渲染出 7 张模块卡（实际 ${collect.cards.length}）`)
   const titles = collect.cards.map((c) => JSON.stringify(c)).join(' ')
   for (const m of MODULES) {
     ok(titles.includes(m.id) || titles.includes(m.title), `卡片含 ${m.id}`)
