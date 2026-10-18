@@ -28,7 +28,11 @@ import {
 import { checkIsolation, validateFindings, filterBySeverity, DIMENSIONS, SEVERITIES, ISOLATION_ALLOWLIST } from './lib/review.js'
 import { POLISH_RULES, detect, verify, changeLog } from './lib/polish.js'
 import { runStyleAnchor, runChapterPack, runReviewPass, runDeaiPolish, verifyPolish, loadStyleGuide, moduleStatus, STYLE_GUIDE_NAME } from './lib/pipeline.js'
-import { MODULES, STYLE_ANCHOR, CHAPTER_PACK, REVIEW_PASS, DEAI_POLISH } from './lib/prompts.js'
+import { MODULES, UPSTREAM_MODULES, STYLE_ANCHOR, WORLD_BUILDER, CHARACTER_DESIGNER, CHAPTER_PACK, REVIEW_PASS, DEAI_POLISH } from './lib/prompts.js'
+import { validateWorld, validateCharacter, splitSections, WORLD_SECTIONS, CHARACTER_FIELDS } from './lib/bible.js'
+import { ALLOWED, looksLikeFragment } from './lib/polish.js'
+import { runWorldBuilder, checkWorld, runCharacterDesigner, checkCharacter, WORLD_BIBLE_NAME } from './lib/pipeline.js'
+import { AI_TELLS } from './lib/style.js'
 
 let pass = 0
 let fail = 0
@@ -331,7 +335,8 @@ const main = async () => {
   // ————— 五、去味规则 —————
   console.log('\n五、去味规则')
   {
-    ok(POLISH_RULES.length === 5, '五条规则')
+    // 规格里的 5 条 + 从「AI 味的根源是过度解释和对称感」补的 2 条
+    ok(POLISH_RULES.length === 7, `七条规则（实际 ${POLISH_RULES.length}）`)
     const ai = '他仿佛听见了什么。\n\n他站起来。\n\n他走过去。\n\n"你来了。"她低声道。\n\n这一刻，他忽然明白了这一切的意义。'
     const d = detect(ai)
     ok(d.violations.some((v) => v.id === 'as-if'), '抓到「仿佛」')
@@ -434,11 +439,16 @@ const main = async () => {
       const vp2 = await verifyPolish(root, '他听见了什么。', '他仿佛听见了什么。')
       ok(vp2.accepted === false, '改差了不通过')
 
-      // review_pass 要求项目里有正文，补一章再查总览
+      // 六个模块全部就绪需要：style-guide + world-bible + 正文
       await writeFile(join(root, 'chapters', '第0025章-私仓.md'), '他站起来。')
+      const before = await moduleStatus(root)
+      const pending = before.modules.filter((m) => m.ready !== true).map((m) => m.id)
+      ok(pending.includes('world_builder'), '缺 world-bible 时 World Builder 未就绪')
+      await writeFile(join(root, WORLD_BIBLE_NAME), '# 世界观\n')
       const st = await moduleStatus(root)
       const notReady = st.modules.filter((m) => m.ready !== true)
-      ok(notReady.length === 0, `四个模块全部就绪${notReady.length > 0 ? `（未就绪：${notReady.map((m) => m.id + ':' + m.note).join('；')}）` : ''}`)
+      ok(st.modules.length === 6, `总览列出 6 个模块（实际 ${st.modules.length}）`)
+      ok(notReady.length === 0, `六个模块全部就绪${notReady.length > 0 ? `（未就绪：${notReady.map((m) => m.id + ':' + m.note).join('；')}）` : ''}`)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -462,10 +472,120 @@ const main = async () => {
     }
   }
 
+  // ————— 六点五、世界观与人物 —————
+  console.log('\n六点五、世界观与人物')
+  {
+    const goodWorld = [
+      '## 基础设定', 'x'.repeat(160),
+      '## 力量体系', '修炼要消耗田息，每引一次折三日寿。上限是三段，过段必反噬；除非有灵稻续命，否则无法再进。' + 'y'.repeat(80),
+      '## 社会结构', 'z'.repeat(160),
+      '## 近百年重大事件', 'a'.repeat(160),
+      '## 隐藏规则', '- 规则一：谷主见过犁头。', '- 规则二：死役牌其实是活契。',
+      '## 普通人日常场景', '- 场景一：晒谷场。', '- 场景二：水碓房。', '- 场景三：药园篱下。',
+      '## 自检', '我自己也解释不清楚的地方：田息为什么只在这一谷里有？',
+    ].join('\n\n')
+    const w = validateWorld(goodWorld)
+    ok(w.ok === true, `合规世界观通过${w.ok ? '' : '：' + w.errors.join('；')}`)
+    ok(w.sections.length === WORLD_SECTIONS.length, '七个必需章节都认到')
+
+    // 力量体系缺代价 / 缺限制 —— 规格里加粗的那条
+    const noCost = goodWorld.replace('修炼要消耗田息，每引一次折三日寿。上限是三段，过段必反噬；除非有灵稻续命，否则无法再进。', '修炼分三段，一段比一段强，练成就能横着走。')
+    const w2 = validateWorld(noCost)
+    ok(w2.ok === false, '力量体系没写代价与限制时打回')
+    ok(w2.errors.some((e) => e.includes('代价')), '报出缺代价')
+    ok(w2.errors.some((e) => e.includes('限制')), '报出缺限制')
+
+    // 隐藏规则不足两条
+    const oneHidden = goodWorld.replace('- 规则二：死役牌其实是活契。', '')
+    ok(validateWorld(oneHidden).errors.some((e) => e.includes('至少 2 条')), '隐藏规则不足两条时打回')
+
+    // 日常场景不足三个
+    const twoDaily = goodWorld.replace('- 场景三：药园篱下。', '')
+    ok(validateWorld(twoDaily).errors.some((e) => e.includes('三个')), '日常场景不足三个时打回')
+
+    // 缺章节
+    const noSelfCheck = goodWorld.replace('## 自检\n\n我自己也解释不清楚的地方：田息为什么只在这一谷里有？', '')
+    ok(validateWorld(noSelfCheck).errors.some((e) => e.includes('自检')), '缺自检章节时打回')
+    ok(validateWorld('').ok === false, '空内容打回')
+  }
+  {
+    const goodChar = [
+      '## 表面欲望', '他想守住那三亩田，熬过死役。',
+      '## 真实需求', '他需要有人告诉他：活着本身就够，不必拿命换。',
+      '## 致命缺陷', '认死理，宁可自己扛也不开口求人。',
+      '## 内心独白', 'x'.repeat(100),
+      '## 过往创伤', '十二年前他娘把最后半碗粥推给他，自己喝了三天水。',
+      '## 标志行为', '愤怒：不出声，手先攥紧。恐惧：反复擦同一件东西。狂喜：只是站着，看很久。',
+    ].join('\n\n')
+    const c = validateCharacter(goodChar)
+    ok(c.ok === true, `合规人物卡通过${c.ok ? '' : '：' + c.errors.join('；')}`)
+    ok(c.fieldsFound.length === CHARACTER_FIELDS.length, '六个必需字段都认到')
+    ok(typeof c.needsHumanCheck === 'string' && c.needsHumanCheck.includes('冲突'), '提示人检查三者冲突（机器判不了）')
+
+    const noFlaw = goodChar.replace('## 致命缺陷\n\n认死理，宁可自己扛也不开口求人。', '')
+    ok(validateCharacter(noFlaw).errors.some((e) => e.includes('致命缺陷')), '缺致命缺陷时打回')
+
+    const noMood = goodChar.replace('愤怒：不出声，手先攥紧。恐惧：反复擦同一件东西。狂喜：只是站着，看很久。', '生气的时候不说话。')
+    const c2 = validateCharacter(noMood)
+    ok(c2.ok === false, '标志行为缺情绪档位时打回')
+    ok(c2.errors.some((e) => e.includes('恐惧')) && c2.errors.some((e) => e.includes('狂喜')), '报出缺哪几档')
+
+    // 创伤煽情要提醒
+    const mushy = goodChar.replace('十二年前他娘把最后半碗粥推给他，自己喝了三天水。', '他痛不欲生，撕心裂肺。')
+    ok(validateCharacter(mushy).warnings.some((x) => x.includes('煽情')), '创伤煽情时提醒')
+    ok(validateCharacter('').ok === false, '空内容打回')
+  }
+  {
+    // 上游模块能组装
+    const root = await makeProject()
+    try {
+      const w = await runWorldBuilder(root, '古代种田 / 修仙底层')
+      ok(w.ok === true, 'World Builder 可组装')
+      ok(w.prompt.includes('使用代价'), '提示词强调代价')
+      ok(w.guidePath.endsWith(WORLD_BIBLE_NAME), '给出落盘路径')
+      ok((await runWorldBuilder(root, '')).ok === false, '没给题材时拒绝')
+      const c = await runCharacterDesigner(root, '吴常', { role: '主角' })
+      ok(c.ok === true, 'Character Designer 可组装')
+      ok(c.prompt.includes('真实需求'), '提示词含真实需求')
+      ok((await runCharacterDesigner(root, '')).ok === false, '没给角色名时拒绝')
+      ok(checkWorld('x').ok === false, 'checkWorld 可用')
+      ok(checkCharacter('x').ok === false, 'checkCharacter 可用')
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
+
+  // ————— 六点六、去味：新增规则与允许清单 —————
+  console.log('\n六点六、去味：过度解释、对称感、允许清单')
+  {
+    const ids = POLISH_RULES.map((r) => r.id)
+    ok(ids.includes('over-explain'), '有「过度解释」规则')
+    ok(ids.includes('symmetry'), '有「对称感」规则')
+    // 关键：去味规则的 id 必须都能在风格锚点的禁忌表里找到，否则过滤会静默失效
+    const tellIds = AI_TELLS.map((t) => t.id)
+    const unmappable = ids.filter((x) => !tellIds.includes(x))
+    ok(unmappable.length === 0, `所有规则都能被禁忌清单过滤${unmappable.length ? '（漏：' + unmappable.join(',') + '）' : ''}`)
+
+    ok(detect('也就是说，他早就知道了。').violations.some((v) => v.id === 'over-explain'), '抓到明晃晃的解释标记')
+    ok(detect('他看见了田，看见了稻，看见了水。').violations.some((v) => v.id === 'symmetry'), '抓到重复标记的排比')
+    // 普通三连不是排比 —— 第一版在这里误报，真稿每章 10 次
+    ok(!detect('他站起来，走过去，推开门。').violations.some((v) => v.id === 'symmetry'), '普通三连分句不误报为排比')
+    ok(detect('屋子里静；屋外也静。').violations.some((v) => v.id === 'symmetry'), '抓到对仗式收尾')
+
+    // 允许清单
+    ok(ALLOWED.length === 2, '允许清单两条')
+    ok(ALLOWED.some((a) => a.id === 'fragment'), '允许不完整的句子')
+    ok(ALLOWED.some((a) => a.id === 'chatter'), '允许人物说废话')
+    ok(looksLikeFragment('走。') === true, '独词句算不完整句')
+    ok(looksLikeFragment('他蹲下去，手指碰了碰谷壳。') === false, '完整句不算')
+    const d = detect('走。' + String.fromCharCode(10) + String.fromCharCode(10) + '他蹲下去，手指碰了碰谷壳。')
+    ok(d.allowed !== undefined && Array.isArray(d.allowed), '扫描结果带出允许清单')
+    ok(typeof d.fragmentCount === 'number' && d.fragmentCount >= 1, '数出允许的断句数')
+  }
+
   // ————— 七、模板与契约自洽 —————
   console.log('\n七、模板与契约自洽')
   {
-    ok(MODULES.length === 4, '四个模块')
+    ok(MODULES.length === 6, '六个模块（上游三个 + 任务层三个）')
+    ok(UPSTREAM_MODULES.length === 3, '上游模块三个：文风 / 世界观 / 人物')
     for (const m of MODULES) {
       const { slots } = collectSlots(m.template)
       const declared = new Set([
