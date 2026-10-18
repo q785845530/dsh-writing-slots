@@ -6,11 +6,30 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=22.5", "dsh": ">=0.1.7-rc.2" },
-  "peerDependencies": { "@deepseek-ai/cordis": "^4.0.1" },
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+  "engines": {
+    "node": ">=22.5",
+    "dsh": ">=0.1.7-rc.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  }
 }
