@@ -212,6 +212,68 @@ const main = async () => {
     } finally { await rm(ws, { recursive: true, force: true }) }
   }
 
+  console.log('\n七、整本书：编码与分段')
+  {
+    const ws = await tmp()
+    try {
+      // —— 编码：GBK 的 txt 不能被读成乱码 ——
+      const iconv = (await import('iconv-lite')).default
+      const gbkText = '第一章 开端\r\n　　他走进屋子，屋里很暗。\r\n第二章 转折\r\n　　灯没亮。\r\n第三章 结尾\r\n　　他坐下了。\r\n'
+      await writeFile(join(ws, 'gbk.txt'), iconv.encode(gbkText, 'gbk'))
+      const got = await lib.readTextSmart(join(ws, 'gbk.txt'))
+      ok(got.includes('他走进屋子'), '**GBK 的 txt 能正确解码**')
+      ok(!got.includes('\ufffd'), '没有替换字符（不是乱码）')
+
+      await writeFile(join(ws, 'utf8.txt'), gbkText, 'utf8')
+      ok((await lib.readTextSmart(join(ws, 'utf8.txt'))).includes('他走进屋子'), 'UTF-8 也认')
+      await writeFile(join(ws, 'bom.txt'), '\ufeff' + gbkText, 'utf8')
+      ok(!(await lib.readTextSmart(join(ws, 'bom.txt'))).startsWith('\ufeff'), '去掉 BOM')
+
+      // —— 分段：按章节标题切 ——
+      const long = []
+      for (let i = 1; i <= 12; i += 1) {
+        long.push(`第${i}章 标题${i}`)
+        long.push('　　正文。'.repeat(400))
+      }
+      await writeFile(join(ws, 'book.txt'), long.join('\n'), 'utf8')
+      const r = await lib.chunkBook(join(ws, 'book.txt'), { chunkChars: 5000 })
+      ok(r.ok === true, '切段成功')
+      ok(r.byChapter === true, '**按章节标题切**（不是硬切）')
+      ok(r.chapterMarks === 12, `认出 12 个章节标题（实际 ${r.chapterMarks}）`)
+      ok(r.total >= 2, `切成 ${r.total} 段`)
+      ok(r.chunks.every((c) => c.chars <= 5000), '每段都不超上限')
+      ok(r.chunks.reduce((a, c) => a + c.chars, 0) > 10000, '总字数对得上量级')
+
+      // 取某段正文
+      const c0 = await lib.chunkText(join(ws, 'book.txt'), 0, { chunkChars: 5000 })
+      ok(c0.ok === true && c0.text.includes('第一章') || c0.text.includes('第1章'), '取第 1 段拿到开头')
+      ok(c0.chars > 0 && c0.chars <= 5000, '第 1 段不超上限')
+      const cLast = await lib.chunkText(join(ws, 'book.txt'), r.total - 1, { chunkChars: 5000 })
+      ok(cLast.ok === true, '取最后一段也行')
+      ok((await lib.chunkText(join(ws, 'book.txt'), 999, { chunkChars: 5000 })).ok === false, '取不存在的段如实报')
+
+      // 没有章节标题 → 硬切
+      await writeFile(join(ws, 'flat.txt'), '一段没有任何章节标题的长文本。'.repeat(2000), 'utf8')
+      const f = await lib.chunkBook(join(ws, 'flat.txt'), { chunkChars: 5000 })
+      ok(f.byChapter === false, '没有章节标题时标出来')
+      ok(f.total >= 2, '硬切成多段')
+      ok(f.hint.includes('没找到章节标题'), '提示说明了')
+
+      // —— 提取本地书 ——
+      await mkdir(join(ws, '本地书'), { recursive: true })
+      await writeFile(join(ws, '本地书', '某本.txt'), '第1章 开头\n' + '正文内容。'.repeat(6000), 'utf8')
+      const ex = await lib.extractFromWorkspace(ws)
+      ok(ex.added >= 1, '**本地书/ 里的 txt 能被提取**')
+      const l = await lib.list(ws)
+      const fromBook = l.items.find((x) => x.source === '本地书')
+      ok(fromBook !== undefined, '来源标成「本地书」')
+      ok(fromBook.kind === 'structure', '本地书归到结构')
+      ok(fromBook.enabled === false, '提取的默认不参与合成（是原料）')
+      ok(fromBook.body.length <= 20000, '整本小说被截到 2 万字以内（不然塞不进提示词）')
+      ok(fromBook.summary.includes('原文'), 'summary 写清原文多长')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
   console.log(`\n结果：${pass} passed / ${fail} failed`)
   if (fail > 0) process.exit(1)
 }

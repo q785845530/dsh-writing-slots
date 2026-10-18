@@ -31,7 +31,7 @@
 ## 四个工具
 
 ```
-novel_logic_map(action: extract | decompose | accept | read | to-library, ...)
+novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
@@ -400,6 +400,21 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 存进指令库，当后续写作的真实素材库
 ```
 
+### 整本小说怎么处理
+
+一本 54 万字的小说塞不进一次提示词，所以有**分段**：
+
+```
+[把本地书切段]  1545748 字　239 个章节标题　98 段
+[1] [2] [3] [4] ...   ← 点一段，正文载入素材框
+```
+
+按**章节标题**切（第X章 / 第X回 / 序章 / 楔子 / 番外），每段控制在 2 万字以内。没有章节标题就按字数硬切，并说明。
+
+实测你那本《随波逐流之一代军师》：239 个章节标记 → 切成 98 段，每段 3—4 章、约 1.8 万字。一段一段拆，最后合成一张图。
+
+**编码自动识别**：本地 txt 十有八九是 GBK，直接按 UTF-8 读会得到一屏乱码。而且**乱码进库比读不到更坏**——统计全错还看不出来。所以先试严格 UTF-8，不行再试 GBK，判据是**乱码率**（汉字占一成以上、坏字符不到百分之一）。
+
 ### 图长什么样
 
 不是插画，是**能驱动写作的结构化知识图**。每个节点归到一个槽位功能点：
@@ -749,7 +764,7 @@ node verify-reader.mjs --net    # 再加在线链路：真去搜一本书、取�
 ### 工具
 
 ```
-novel_logic_map(action: extract | decompose | accept | read | to-library, ...)
+novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
@@ -772,7 +787,7 @@ node verify-all.mjs      # 一键跑全部
 | `verify-continue.mjs` | 126 | 自动续跑（含与原插件的差分比对） |
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
 | `verify-library.mjs` | 98 | 指令库（提取、槽位映射、组合） |
-| `verify-logicmap.mjs` | 70 | 逻辑图（校验、渲染、解析、图→条目） |
+| `verify-logicmap.mjs` | 93 | 逻辑图（校验、渲染、解析、图→条目、分段、编码） |
 | `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |
 | `verify-client.mjs` | 38 | 浏览器半 |
 

@@ -796,6 +796,50 @@ const main = async () => {
   }
 
   // ————— 七、模板与契约自洽 —————
+  // ————— 六点九九、导入完整性（真机才暴露的那类错） —————
+  console.log('\n六点九九、导入完整性')
+  {
+    // 这类错单测抓不到：函数被调用、但顶层没 import，只在真机走那条分支时才炸。
+    // 我踩过三次（extractFromWorkspace / ctx / join），所以加一道静态检查。
+    //
+    // 做法：只查**从别的模块导入**的那批名字 —— 本文件内定义的函数不在此列，
+    // 否则 apply / sendJson 这种会被误报（第一版就是）。
+    const src = await readFile('lib/index.js', 'utf8')
+    const imported = new Set()
+    for (const m of src.matchAll(/import\s+\{([^}]+)\}\s+from/g)) {
+      for (const x of m[1].split(',')) {
+        const n = x.trim().split(/\s+as\s+/).pop().trim()
+        if (n !== '') imported.add(n)
+      }
+    }
+    for (const m of src.matchAll(/import\s+\*\s+as\s+(\w+)\s+from/g)) imported.add(m[1])
+
+    // 本文件自己定义的（function / const x =）
+    const defined = new Set()
+    for (const m of src.matchAll(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)/gm)) defined.add(m[1])
+    for (const m of src.matchAll(/^(?:export\s+)?const\s+(\w+)\s*=/gm)) defined.add(m[1])
+
+    // 只查从 workspace.js / library.js / pipeline.js / logicmap.js 这几个
+    // 我反复加东西的模块里导入的名字 —— 它们最容易被漏
+    const watched = ['extractFromWorkspace', 'chunkBook', 'chunkText', 'runDecompose', 'acceptMap',
+      'mapToLibrary', 'readMap', 'runMiner', 'wsInventory', 'wsLoadGlobal', 'wsSaveGlobal',
+      'globalConfigPath', 'lib', 'logicmap', 'join']
+    const missing = watched.filter((n) => {
+      const used = new RegExp(`(?<![\\w.$'"])${n}\\s*[.(]`).test(src)
+      return used && !imported.has(n) && !defined.has(n)
+    })
+    ok(missing.length === 0, `反复改的那几个模块的导入都齐${missing.length > 0 ? '（漏：' + missing.join(', ') + '）' : ''}`)
+
+    // 顺带确认：所有从别的模块导入的名字，在文件里至少被用到一次
+    // （反过来查：导了不用，说明我改的时候漏删）
+    const unused = []
+    for (const n of imported) {
+      if (n === 'default' || n.length < 3) continue
+      if (!new RegExp(`(?<![\\w.$'"])${n}\\b`).test(src.slice(src.indexOf('\n\n')))) unused.push(n)
+    }
+    ok(unused.length === 0, `没有「导了不用」的名字${unused.length > 0 ? '（多余：' + unused.slice(0, 8).join(', ') + '）' : ''}`)
+  }
+
   console.log('\n七、模板与契约自洽')
   {
     ok(MODULES.length === 9, `九个模块（实际 ${MODULES.length}）`)
