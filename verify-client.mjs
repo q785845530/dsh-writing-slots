@@ -146,7 +146,9 @@ const main = async () => {
     seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
     ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
     ok(tabs1.includes('自动续跑'), '**启用时有「自动续跑」页签**')
-    ok(tabs1.length === 2, `顶层正好两个页签（实际 ${tabs1.length}）`)
+    ok(tabs1.length === 4, `顶层四个页签（实际 ${tabs1.length}）`)
+    ok(tabs1.includes('工作目录'), '有「工作目录」页签')
+    ok(tabs1.includes('小说网站'), '有「小说网站」页签')
   }
   {
     // 停用时：只剩写作槽位
@@ -307,7 +309,9 @@ const main = async () => {
     seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
     ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
     ok(tabs1.includes('自动续跑'), '**启用时有「自动续跑」页签**')
-    ok(tabs1.length === 2, `顶层正好两个页签（实际 ${tabs1.length}）`)
+    ok(tabs1.length === 4, `顶层四个页签（实际 ${tabs1.length}）`)
+    ok(tabs1.includes('工作目录'), '有「工作目录」页签')
+    ok(tabs1.includes('小说网站'), '有「小说网站」页签')
   }
   {
     // 停用时：只剩写作槽位
