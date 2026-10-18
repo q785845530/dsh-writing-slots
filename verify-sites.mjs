@@ -156,6 +156,63 @@ const main = async () => {
     }
   }
 
+  console.log('\n一·三、工作区盘点（产出怎么进到槽位）')
+  {
+    const root = await tmp()
+    const { inventory } = await import('./lib/workspace.js')
+    try {
+      await init(root)
+      // 空工作区：该指出「还没东西」
+      let inv = await inventory(root)
+      ok(inv.slots.length === 7, `盘点 7 个槽位（实际 ${inv.slots.length}）`)
+      ok(inv.material.samples.count === 0, '空工作区样本 0')
+      ok(inv.slots.find((x) => x.id === 'style_anchor').ready === false, '没样本时 Style Anchor 未就绪')
+      ok(inv.next != null && inv.next.slot === 'world_builder', '空工作区先推 World Builder')
+
+      // 放两篇样本 → Style Anchor 应该就绪，并推「先跑 Style Anchor」
+      await writeFile(join(root, '样本', 'a.md'), '正文。'.repeat(200), 'utf8')
+      await writeFile(join(root, '样本', 'b.md'), '正文。'.repeat(200), 'utf8')
+      inv = await inventory(root)
+      const sa = inv.slots.find((x) => x.id === 'style_anchor')
+      ok(sa.ready === true && sa.have === 2, '有样本后 Style Anchor 就绪')
+      ok(sa.action === 'use-samples', '给出一键动作 use-samples')
+      ok(sa.files.length === 2, '带出文件名清单')
+      ok(inv.next.slot === 'style_anchor' && inv.next.text.includes('样本目录'), '下一步推 Style Anchor')
+
+      // 模拟「Style Anchor 已经跑过」—— 否则下一步会一直推它（那是对的，
+      // 初始化就该先做文风基线）
+      await writeFile(join(root, '设定', 'style-guide.md'), '# 文风', 'utf8')
+      await writeFile(join(root, '设定', 'world-bible.md'), '# 世界观', 'utf8')
+
+      // 细纲 → Chapter Pack
+      await writeFile(join(root, '细纲', '第0025章.md'), '- **任务**：x\n- **钩子**：y', 'utf8')
+      await writeFile(join(root, '细纲', '第0026章.md'), '- **任务**：x\n- **钩子**：y', 'utf8')
+      inv = await inventory(root)
+      const cp = inv.slots.find((x) => x.id === 'chapter_pack')
+      ok(cp.ready === true && cp.have === 2, '有细纲后 Chapter Pack 就绪')
+      ok(inv.material.briefs.first === 25 && inv.material.briefs.last === 26, '识别出细纲章号范围')
+      ok(inv.material.settings.hasStyle === true, '认出已跑过 Style Anchor')
+      ok(inv.next.slot === 'chapter_pack', '有细纲没正文 → 推 Chapter Pack')
+
+      // 正文 → 审稿/去味/读者
+      await writeFile(join(root, '章节', '第0025章-x.md'), '他走进屋子。'.repeat(50), 'utf8')
+      inv = await inventory(root)
+      ok(inv.slots.find((x) => x.id === 'review_pass').ready === true, '有正文后 Review Pass 就绪')
+      ok(inv.slots.find((x) => x.id === 'deai_polish').ready === true, '有正文后 De-AI Polish 就绪')
+      ok(inv.slots.find((x) => x.id === 'reader_sim').ready === true, '有正文后读者通道就绪')
+      ok(inv.next.slot === 'deai_polish', '写完正文 → 推审稿/去味')
+      ok(inv.material.chapters.count === 1, '正文计数正确')
+
+      // 没跑过的槽位要有提示
+      ok(inv.slots.find((x) => x.id === 'chapter_pack').hint !== null, '缺前情提要时给提示')
+
+      // 非 md 的细纲不计入
+      await writeFile(join(root, '细纲', 'note.txt'), 'x', 'utf8')
+      inv = await inventory(root)
+      ok(inv.material.briefs.count === 2, '细纲只数 .md')
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
+
   console.log('\n二、cookie 是凭据')
   {
     const key = Buffer.alloc(32, 7)

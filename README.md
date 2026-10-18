@@ -380,6 +380,25 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 
 `action=init` 建结构，幂等（已存在的目录不动）。
 
+## 产出怎么进到写作槽位
+
+把文件落进分类目录只是第一步 —— **槽位得知道自己手里有什么**。所以「写作槽位」页签顶部有一块**工作区现状**：
+
+```
+工作区  /home/wsn/文档/dsh/本地演示/novels/插件目录拆解
+[下一步] 样本目录里有 2 篇 —— 先跑 Style Anchor，把文风基线定下来。
+         [用样本目录跑 Style Anchor]
+样本 2  细纲 0  正文 0  拆文库 2  素材 3
+```
+
+三个作用：
+
+1. **告诉你下一步做什么** —— 按现有素材推一条最该做的（有样本没基线 → 推 Style Anchor；有细纲没正文 → 推 Chapter Pack；有正文 → 推审稿去味）
+2. **一键取素材** —— 选 Style Anchor 时给「用「样本/」里的 N 个文件」，直接把路径填进样本列表；选 Chapter Pack 时列出细纲文件，点一个填章号
+3. **每个槽位卡片上标出「手里有什么」** —— 就绪 / 缺东西一眼可见
+
+盘点接口：`GET /api/dsh-writing-slots/slots/inventory`
+
 ## 阅读器
 
 从 [dsh-reader](https://github.com/Wodexinhaoleng-Kasssa/dsh-reader)（Apache-2.0）移植。在线搜书、逐章阅读、整本 TXT 下载，也能读工作目录里的本地书。

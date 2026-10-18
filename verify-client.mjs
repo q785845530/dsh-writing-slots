@@ -163,6 +163,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     })
   } catch (e) {
@@ -261,6 +262,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b1 = loadBundle(new Map(), onFetch)
@@ -295,6 +297,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_OFF }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b2 = loadBundle(new Map(), offFetch)
@@ -339,6 +342,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/reader/sources')) return { ok: true, status: 200, json: async () => ({ ok: true, sources: [], count: 0, notice: { origin: 'x', warning: 'y' } }) }
       if (u.includes('/reader/search')) {
         return { ok: true, status: 200, json: async () => ({ ok: true, results: [{ title: '某本书', source: '某源', url: '/b/1' }], errors: [], searched: 10 }) }
@@ -456,6 +460,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b = loadBundle(store, onFetch)
@@ -533,6 +538,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b = loadBundle(store, onFetch)
@@ -635,6 +641,7 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b = loadBundle(store, onFetch)
