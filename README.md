@@ -31,6 +31,8 @@
 ## 四个工具
 
 ```
+novel_logic_map(action: extract | decompose | accept | read | to-library, ...)
+                                                → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
 reader(action: sources | search | chapters | content | download | local | read | send | notice, ...)
@@ -382,6 +384,54 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 
 `action=init` 建结构，幂等（已存在的目录不动）。
 
+## 小说逻辑图：素材 → 拆解 → 图 → 素材库
+
+这是主链，起点在**写作槽位**页签：
+
+```
+写作槽位从工作目录提取本地素材
+      ↓  1. 从工作目录提取素材（素材/拆文库/样本/设定）
+子智能拆分阅读（模型读素材，按槽位功能点拆开）
+      ↓  2. 生成子智能拆解提示词 → 交给模型跑
+结果填进槽位对应功能点
+      ↓  3. 把 JSON 收成逻辑图（校验 + 存盘）
+一键生成完整逻辑图
+      ↓  4. 图 → 指令库条目
+存进指令库，当后续写作的真实素材库
+```
+
+### 图长什么样
+
+不是插画，是**能驱动写作的结构化知识图**。每个节点归到一个槽位功能点：
+
+| 节点类型 | 喂给哪个槽位 | 抽什么 |
+|---|---|---|
+| `world` | World Builder | 力量体系、代价、限制、社会结构 |
+| `character` | Character Designer | 表面欲望、真实需求、致命缺陷、压力档反应 |
+| `structure` | Chapter Pack | 章节骨架、信息差、钩子、张力曲线 |
+| `style` | Style Anchor | 句长、节奏、感官、比喻 |
+| `trope` | Chapter Pack | 可复用的情节机关 |
+| `rule` | Review Pass | 禁止事项、必须满足的约束 |
+| `material` | Chapter Pack | 专有名词、地名、器物 |
+
+存成两份：`设定/小说逻辑图.md`（人读，带 mermaid 结构图）+ `.json`（条目从它来）。
+
+### 一条硬判据：必须能追到出处
+
+每个节点都要标 `sources`（来自哪份素材、哪一章）。**追不到出处的不要写**——那是模型编的，不是这本书的。
+
+校验会明确提醒「没标出处 —— 无法确认是原文里的还是模型编的」。
+
+### 两套类型体系要显式映射
+
+图的类型按「喂给哪个槽位」分（有 `world`），指令库按「指令的用途」分（没有 `world`）。
+
+不映射的话 `world` 会被指令库当成非法类型**静默回退成 `rule`**——世界规则变成硬规则，看着没错但语义全歪。所以有 `NODE_TO_LIB_KIND` 这张表，`world → material`。
+
+### 图来的条目默认启用
+
+和「从工作目录提取」相反：提取的是**原料**（默认不启用），图里的是**加工过的结论**（默认启用）。
+
 ## 指令库：最终写作指令的落点
 
 这是**闭环**所在，也是你要的那个页签：
@@ -699,6 +749,8 @@ node verify-reader.mjs --net    # 再加在线链路：真去搜一本书、取�
 ### 工具
 
 ```
+novel_logic_map(action: extract | decompose | accept | read | to-library, ...)
+                                                → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
 reader(action: sources | search | chapters | content | download | local | read | send | notice, ...)
@@ -720,6 +772,7 @@ node verify-all.mjs      # 一键跑全部
 | `verify-continue.mjs` | 126 | 自动续跑（含与原插件的差分比对） |
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
 | `verify-library.mjs` | 98 | 指令库（提取、槽位映射、组合） |
+| `verify-logicmap.mjs` | 70 | 逻辑图（校验、渲染、解析、图→条目） |
 | `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |
 | `verify-client.mjs` | 38 | 浏览器半 |
 

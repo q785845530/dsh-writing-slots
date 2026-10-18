@@ -15,6 +15,7 @@ const SUITES = [
   ['verify-continue.mjs', '自动续跑（规则表、退避、换模型、压缩、去抖、上限）'],
   ['verify-sites.mjs', '工作目录与小说网站（cookie 加密、反爬识别、内容分类）'],
   ['verify-library.mjs', '指令库（条目判据、落盘、导入解析、勾选组合、顺序）'],
+  ['verify-logicmap.mjs', '逻辑图（校验、渲染、解析、图→条目、整条链）'],
   ['verify-reader.mjs', '阅读器（书源数据、XPath/JSON 规则、编码、拆章、送进工作目录）'],
   ['verify-client.mjs', '浏览器半（渲染、七个槽位、页签随开关显隐）'],
 ]
