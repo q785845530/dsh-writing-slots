@@ -164,6 +164,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     })
   } catch (e) {
@@ -263,6 +264,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b1 = loadBundle(new Map(), onFetch)
@@ -285,10 +287,11 @@ const main = async () => {
     seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
     ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
     ok(tabs1.includes('自动续跑'), '**启用时有「自动续跑」页签**')
-    ok(tabs1.length === 5, `顶层五个页签（实际 ${tabs1.length}）`)
+    ok(tabs1.length === 6, `顶层六个页签（实际 ${tabs1.length}）`)
     ok(tabs1.includes('工作目录'), '有「工作目录」页签')
     ok(tabs1.includes('小说网站'), '有「小说网站」页签')
     ok(tabs1.includes('阅读器'), '有「阅读器」页签')
+    ok(tabs1.includes('指令库'), '有「指令库」页签')
   }
   {
     // 停用时：只剩写作槽位
@@ -298,6 +301,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b2 = loadBundle(new Map(), offFetch)
@@ -343,6 +347,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       if (u.includes('/reader/sources')) return { ok: true, status: 200, json: async () => ({ ok: true, sources: [], count: 0, notice: { origin: 'x', warning: 'y' } }) }
       if (u.includes('/reader/search')) {
         return { ok: true, status: 200, json: async () => ({ ok: true, results: [{ title: '某本书', source: '某源', url: '/b/1' }], errors: [], searched: 10 }) }
@@ -461,6 +466,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b = loadBundle(store, onFetch)
@@ -539,6 +545,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b = loadBundle(store, onFetch)
@@ -642,6 +649,7 @@ const main = async () => {
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
     }
     const b = loadBundle(store, onFetch)

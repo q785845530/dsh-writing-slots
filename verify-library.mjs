@@ -1,0 +1,212 @@
+#!/usr/bin/env node
+/**
+ * dsh-writing-slots / 指令库 自测。
+ *
+ *   node verify-library.mjs
+ *
+ * 这是「多次读小说 → 沉淀 → 勾选组合 → 最终指令」闭包的落点，所以要验：
+ *   - 条目的**判据**：是指令不是资料（太短的会被提醒）
+ *   - 落盘一条一个文件（坏一条不连坐）
+ *   - **组合**：顺序、分组、只取勾选的、空清单要报错
+ *   - 导入：模型爱套 markdown 代码块 / 加说明，都得能解析
+ */
+import { mkdtemp, rm, writeFile, readdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import * as L from './lib/library.js'
+
+let pass = 0
+let fail = 0
+const ok = (cond, label) => {
+  if (cond) { pass += 1; console.log(`  ✓ ${label}`) }
+  else { fail += 1; console.log(`  ✗ ${label}`) }
+}
+const tmp = async () => mkdtemp(join(tmpdir(), 'dws-lib-'))
+
+const main = async () => {
+  console.log('一、类型与规范化')
+  {
+    ok(L.KINDS.length === 6, `六种类型（实际 ${L.KINDS.length}）`)
+    ok(L.KINDS.map((k) => k.id).join(',') === 'style,structure,character,trope,rule,material', '类型 id 稳定')
+    ok(L.DEFAULT_ORDER[0] === 'rule', '合成默认先放硬规则')
+    ok(L.KIND_LABEL.structure === '结构', '有中文名')
+
+    const n = L.normalize({ kind: 'style', name: '句长', body: '句子平均不超过 12 字，短句占八成以上。' })
+    ok(n.ok === true, '合规条目通过')
+    ok(n.item.enabled === true, '默认启用')
+    ok(typeof n.item.id === 'string' && n.item.id.includes('style'), '自动生成带类型的 id')
+    ok(n.item.order === L.DEFAULT_ORDER.indexOf('style') * 100, '默认顺序按类型排')
+
+    // 真正缺字段的才该打回；只有 name 没 body 是缺 body（上一行已验）
+    ok(L.normalize({}).ok === false, '空对象打回')
+    ok(L.normalize({ name: 'x' }).ok === false, '只有 name 打回')
+    ok(L.normalize({ body: '这是一条足够长的指令正文，用来测试只有 body 时的行为。' }).ok === false, '只有 body 打回')
+    ok(L.normalize({ body: 'x' }).errors.some((e) => e.includes('name')), '报出缺 name')
+    ok(L.normalize({ name: 'x' }).errors.some((e) => e.includes('body')), '报出缺 body')
+    ok(L.normalize({ name: 'x', body: '短' }).warnings.length > 0, '正文过短时提醒（可能是资料不是指令）')
+    ok(L.normalize({ name: 'x', body: 'y', kind: '不存在的类型' }).item.kind === 'rule', '非法类型回退成 rule')
+  }
+
+  console.log('\n二、落盘与读取')
+  {
+    const ws = await tmp()
+    try {
+      const r = await L.put(ws, { kind: 'style', name: '句长', body: '句子平均不超过 12 字。', source: '某本书' })
+      ok(r.ok === true, '写入成功')
+      ok(existsSync(r.path), '文件真的写了')
+      ok(r.path.includes('指令库'), `落在指令库目录（${r.path.split('/').slice(-2).join('/')}）`)
+
+      const g = await L.get(ws, r.item.id)
+      ok(g !== null && g.name === '句长', '读得回来')
+
+      // 一条一个文件：坏一条不连坐
+      await writeFile(join(L.libDir(ws), 'broken.json'), '{ 不是 JSON', 'utf8')
+      const l = await L.list(ws)
+      ok(l.items.length === 1, '坏文件不影响好条目')
+      ok(l.broken.length === 1, '坏文件如实报出来')
+
+      // 覆盖保留 createdAt
+      const created = l.items[0].createdAt
+      const r2 = await L.put(ws, { id: r.item.id, kind: 'style', name: '句长（改）', body: '改过的正文，至少三十个字才不会被提醒，所以这里写长一点。' })
+      ok(r2.item.createdAt === created, '覆盖时保留原 createdAt')
+      ok(r2.item.updatedAt !== undefined, '带 updatedAt')
+
+      ok(await L.get(ws, '不存在') === null, '读不存在的返回 null')
+      ok((await L.remove(ws, '不存在')).ok === false, '删不存在的如实报')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n三、导入（模型产出可能不干净）')
+  {
+    const ws = await tmp()
+    try {
+      const clean = JSON.stringify([
+        { kind: 'structure', name: '信息差', body: '每章至少一次信息差变化，且必须落在那条被点亮的信息上，不能只在末尾提一句。' },
+        { kind: 'rule', name: '不解释', body: '不替读者总结场景意义，不点名人物情绪；留白优先于说明。' },
+      ])
+      ok(L.parseItems(clean).ok === true, '纯 JSON 能解析')
+      ok(L.parseItems('```json\n' + clean + '\n```').count === 2, '套 markdown 代码块能解析')
+      ok(L.parseItems('好的，我抽了这些：\n' + clean + '\n希望有用。').count === 2, '前后有说明文字能解析')
+      ok(L.parseItems('{"items":' + clean + '}').count === 2, '包成 {items:[...]} 能解析')
+      ok(L.parseItems('{"kind":"rule","name":"x","body":"这是一条足够长的指令正文用于测试解析。"}').count === 1, '单个对象也能收')
+      ok(L.parseItems('完全不是 JSON').ok === false, '不是 JSON 如实报')
+      ok(L.parseItems('').ok === false, '空内容如实报')
+
+      const r = await L.importItems(ws, JSON.parse(clean), { source: '雪中悍刀行' })
+      ok(r.added === 2, `导入 2 条（实际 ${r.added}）`)
+      ok(r.items.every((x) => typeof x.name === 'string'), '返回导入的清单')
+
+      // 不覆盖：重复导入换 id 存成新条目
+      const r2 = await L.importItems(ws, JSON.parse(clean), { source: '雪中悍刀行' })
+      ok(r2.added === 2, '重复导入也进（不悄悄改旧的）')
+      const l = await L.list(ws)
+      ok(l.items.length === 4, `共 4 条（实际 ${l.items.length}）`)
+
+      // 无效条目被跳过并报原因
+      const r3 = await L.importItems(ws, [{ name: '缺正文' }, { kind: 'rule', name: '好的', body: '这是一条足够长的指令正文，用来验证跳过逻辑是否只跳过坏的。' }])
+      ok(r3.added === 1 && r3.skipped.length === 1, '坏条目跳过、好条目进来')
+      ok(r3.skipped[0].errors.length > 0, '跳过时给出原因')
+      ok((await L.importItems(ws, [])).ok === false, '空数组如实报')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n四、组合成最终指令（核心）')
+  {
+    const ws = await tmp()
+    try {
+      await L.put(ws, { kind: 'structure', name: '信息差', body: '每章至少一次信息差变化，必须落在那条被点亮的信息上。', source: '书A' })
+      await L.put(ws, { kind: 'rule', name: '不解释', body: '不替读者总结场景意义，不点名人物情绪。', source: '书A' })
+      await L.put(ws, { kind: 'style', name: '句长', body: '句子平均不超过十二字，短句占八成。', source: '书B' })
+      await L.put(ws, { kind: 'material', name: '名词表', body: '田息、岁熟、死役牌、按表轮值。', source: '书B' })
+      const l = await L.list(ws)
+
+      // 默认全取（都启用），且顺序是「硬规则在前」
+      const c = await L.compose(ws)
+      ok(c.ok === true, '合成成功')
+      ok(c.used.length === 4, `用了 4 条（实际 ${c.used.length}）`)
+      const order = c.used.map((x) => x.kind)
+      ok(order[0] === 'rule', `硬规则排最前（实际 ${order.join('>')}）`)
+      ok(order.indexOf('style') < order.indexOf('material'), '素材排最后')
+      ok(c.text.includes('不替读者总结'), '正文进了指令')
+      ok(c.text.includes('# 写作指令'), '有标题')
+      ok(c.byKind.rule === 1 && c.byKind.style === 1, '给出构成统计')
+      ok(c.chars === c.text.length, '字数对得上')
+
+      // 只取勾选的
+      const two = l.items.filter((x) => x.kind === 'rule' || x.kind === 'style').map((x) => x.id)
+      const c2 = await L.compose(ws, two)
+      ok(c2.used.length === 2, '只合成勾选的那两条')
+      ok(!c2.text.includes('信息差'), '没勾的不进去')
+
+      // 分组模式
+      const c3 = await L.compose(ws, null, { groupByKind: true })
+      ok(c3.text.includes('## 硬规则') && c3.text.includes('## 文风'), '按类型分组时有小标题')
+
+      // 来源标注
+      const c4 = await L.compose(ws, null, { includeSource: true })
+      ok(c4.text.includes('书A'), 'includeSource 时标出来源')
+      const c5 = await L.compose(ws, null, {})
+      ok(!c5.text.includes('来源：'), '默认不标来源')
+
+      // 停用的不参与
+      await L.setEnabled(ws, [l.items.find((x) => x.kind === 'material').id], false)
+      const c6 = await L.compose(ws)
+      ok(c6.used.length === 3, '停用的条目不参与合成')
+      ok(!c6.text.includes('田息'), '停用的正文不进去')
+
+      // 空清单要报错
+      const c7 = await L.compose(ws, ['不存在的 id'])
+      ok(c7.ok === false && c7.text === '', '勾了不存在的条目 → 报错且不产出半成品')
+
+      // 自定义标题
+      const c8 = await L.compose(ws, null, { title: '重生文写作指令' })
+      ok(c8.text.startsWith('# 重生文写作指令'), '自定义标题生效')
+      ok(c8.title === '重生文写作指令', '标题也返回')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n五、增删改序')
+  {
+    const ws = await tmp()
+    try {
+      const a = await L.put(ws, { kind: 'rule', name: 'A', body: '这是一条足够长的指令正文，用来测试顺序调整功能是否生效。' })
+      const b = await L.put(ws, { kind: 'rule', name: 'B', body: '这也是一条足够长的指令正文，用来测试顺序调整功能是否生效。' })
+      const c = await L.put(ws, { kind: 'rule', name: 'C', body: '第三条足够长的指令正文，同样用来测试顺序调整功能。' })
+
+      let l = await L.list(ws)
+      ok(l.items.map((x) => x.name).join('') === 'ABC', '默认按写入序')
+
+      await L.reorder(ws, [c.item.id, a.item.id, b.item.id])
+      l = await L.list(ws)
+      ok(l.items.map((x) => x.name).join('') === 'CAB', `重排生效（实际 ${l.items.map((x) => x.name).join('')}）`)
+
+      const p = await L.patch(ws, a.item.id, { name: 'A2' })
+      ok(p.ok === true && p.item.name === 'A2', '改名字生效')
+      ok(p.item.id === a.item.id, '改的时候 id 不变')
+      ok((await L.patch(ws, a.item.id, { body: '' })).ok === false, 'body 不让清空')
+      ok((await L.patch(ws, a.item.id, { kind: '瞎写' })).ok === false, '非法类型被拒')
+      ok((await L.patch(ws, '不存在', { name: 'x' })).ok === false, '改不存在的如实报')
+
+      await L.setEnabled(ws, [b.item.id], false)
+      l = await L.list(ws)
+      ok(l.enabled === 2 && l.items.length === 3, 'enabled 计数正确')
+
+      const s = await L.summary(ws)
+      ok(s.kinds.length === 6, 'summary 给出六类计数')
+      ok(s.totalChars > 0, 'summary 统计总字数')
+      ok(s.sources.length === 0, '没标来源时 sources 为空')
+
+      await L.remove(ws, c.item.id)
+      l = await L.list(ws)
+      ok(l.items.length === 2, '删除生效')
+      ok((await readdir(L.libDir(ws))).filter((n) => n.endsWith('.json')).length === 2, '磁盘上也只剩 2 个文件')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log(`\n结果：${pass} passed / ${fail} failed`)
+  if (fail > 0) process.exit(1)
+}
+
+main().catch((e) => { console.error('\n自测自身异常：', e); process.exit(1) })
