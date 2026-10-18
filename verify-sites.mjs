@@ -107,6 +107,55 @@ const main = async () => {
     } finally { await rm(root, { recursive: true, force: true }) }
   }
 
+  console.log('\n一·二、记住用哪个工作目录')
+  {
+    const root = await tmp()
+    const oldHome = process.env.DSH_HOME
+    process.env.DSH_HOME = root
+    // 模块已加载，dshHome 每次调用都读环境变量，所以改了即时生效
+    const {
+      globalConfigPath, loadGlobal, saveGlobal, checkRemembered,
+    } = await import('./lib/workspace.js')
+    try {
+      ok(globalConfigPath().startsWith(root), '全局配置记在 DSH 主目录下，不在工作目录里')
+      ok(globalConfigPath().includes('workspace.json'), '文件名 workspace.json')
+
+      ok(await loadGlobal() === null, '没存过时返回 null')
+
+      const ws = join(root, 'my-book')
+      await saveGlobal({ workspace: ws, source: 'set' })
+      const back = await loadGlobal()
+      ok(back !== null && back.workspace === ws, '存了能读回来')
+      ok(typeof back.updatedAt === 'string', '带时间戳')
+      // 注意优先级：`a & 0o777 === 0o600` 会先算 ===（得到 false），等于 a & 0。
+      // 必须加括号 —— 我第一版就是这么写错的。
+      const gperm = (await stat(globalConfigPath())).mode & 0o777
+      ok(gperm === 0o600, `配置权限 0600（实际 ${gperm.toString(8)}）`)
+
+      // 合并写，不互相覆盖
+      await saveGlobal({ source: 'other' })
+      const back2 = await loadGlobal()
+      ok(back2.workspace === ws && back2.source === 'other', '再写是合并不是覆盖')
+
+      // 记住的目录被删了要能发现
+      ok((await checkRemembered()).ok === false, '记住的目录不存在时如实报')
+      await mkdir(ws, { recursive: true })
+      ok((await checkRemembered()).ok === true, '目录建好后校验通过')
+
+      // 忘掉它
+      await saveGlobal({ workspace: null })
+      ok(await loadGlobal() === null, 'workspace=null 等于忘掉')
+
+      // 坏掉的配置不能抛
+      await writeFile(globalConfigPath(), '{ 不是 JSON', 'utf8')
+      ok(await loadGlobal() === null, '配置坏掉时返回 null，不抛')
+    } finally {
+      if (oldHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = oldHome
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
   console.log('\n二、cookie 是凭据')
   {
     const key = Buffer.alloc(32, 7)

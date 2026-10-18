@@ -16,6 +16,10 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const NS = 'dsh-writing-slots'
+const LS_SEARCH = `${NS}:reader:search`
+const LS_SESSION = `${NS}:reader:session`
+
 let pass = 0
 let fail = 0
 const ok = (cond, label) => {
@@ -63,6 +67,7 @@ function loadBundle(store, fetchImpl) {
       localStorage: {
         getItem: (k) => (store.has(k) ? store.get(k) : null),
         setItem: (k, v) => store.set(k, v),
+        removeItem: (k) => store.delete(k),
       },
     },
     document: {
@@ -192,6 +197,117 @@ const main = async () => {
     }
     w3(tree2)
     ok(bodies.join(' ').includes('写作槽位') || bodies.length > 0, '停用时落到写作槽位面板')
+  }
+
+  console.log('\n六、阅读器状态持久化')
+  {
+    const store = new Map()
+    const onFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/reader/sources')) return { ok: true, status: 200, json: async () => ({ ok: true, sources: [], count: 0, notice: { origin: 'x', warning: 'y' } }) }
+      if (u.includes('/reader/search')) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, results: [{ title: '某本书', source: '某源', url: '/b/1' }], errors: [], searched: 10 }) }
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+
+    // 先跑一轮，触发搜索
+    const b = loadBundle(store, onFetch)
+    let sec = null
+    b.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec = { sp, C } }, inject: (n, cb) => cb() } })
+    b.React._reset()
+    let tree = sec.C({})
+    await b.React._flush()
+    b.React._reset(); tree = sec.C({}); await b.React._flush()
+
+    // 找到阅读器页签并切过去
+    const findTab = (node, want, depth = 0, seen = new Set()) => {
+      if (typeof node === 'string' || node === null || typeof node !== 'object' || depth > 50) return null
+      if (Array.isArray(node)) { for (const c of node) { const r = findTab(c, want, depth, seen); if (r !== null) return r } return null }
+      if (typeof node.type === 'function') { if (seen.has(node.type)) return null; seen.add(node.type); return findTab(node.type(node.props), want, depth + 1, seen) }
+      if (typeof node.children?.[0] === 'string' && node.children[0] === want && typeof node.props?.onClick === 'function') return node
+      for (const c of node.children ?? []) { const r = findTab(c, want, depth, seen); if (r !== null) return r }
+      return null
+    }
+    const readerTab = findTab(tree, '阅读器')
+    ok(readerTab !== null, '找得到「阅读器」页签按钮')
+    readerTab?.props?.onClick?.()
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    // 切到搜书页签
+    const searchTab = findTab(tree, '搜书')
+    ok(searchTab !== null, '找得到「搜书」子页签')
+    searchTab?.props?.onClick?.()
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    // 触发一次搜索
+    const input = (() => {
+      const out = []
+      const w = (node, depth = 0, seen = new Set()) => {
+        if (node === null || typeof node !== 'object' || depth > 50) return
+        if (Array.isArray(node)) { for (const c of node) w(c, depth, seen); return }
+        if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); w(node.type(node.props), depth + 1, seen); return }
+        if (node.type === 'input') out.push(node)
+        for (const c of node.children ?? []) w(c, depth, seen)
+      }
+      w(tree)
+      return out
+    })()
+    ok(input.length > 0, `搜书页有输入框（${input.length} 个）`)
+    const kwInput = input[0]
+    kwInput?.props?.onChange?.({ target: { value: '雪中悍刀行' } })
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    const searchBtn = findTab(tree, '搜索')
+    ok(searchBtn !== null, '找得到「搜索」按钮')
+    searchBtn?.props?.onClick?.()
+    await new Promise((r) => setTimeout(r, 30))
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    // 落盘了没有
+    const raw = store.get(LS_SEARCH)
+    ok(raw !== undefined && raw !== null, '**搜索结果落盘了**')
+    if (raw !== undefined && raw !== null) {
+      const saved = JSON.parse(raw)
+      ok(saved.keyword === '雪中悍刀行', '记住了关键词')
+      ok(saved.results?.results?.length === 1, '记住了结果')
+      ok(typeof saved.at === 'number', '带时间戳')
+    }
+
+    // 新搜索要清掉旧的：先塞一份旧记录，再渲染，应看不到旧的
+    store.set(LS_SEARCH, JSON.stringify({ keyword: '旧搜索', results: { results: [{ title: '旧书', source: 'x' }] }, at: 1 }))
+    const b2 = loadBundle(store, onFetch)
+    let sec2 = null
+    b2.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec2 = { sp, C } }, inject: (n, cb) => cb() } })
+    b2.React._reset()
+    let t2 = sec2.C({})
+    await b2.React._flush()
+    findTab(t2, '阅读器')?.props?.onClick?.()
+    b2.React._reset(); t2 = sec2.C({})
+    await b2.React._flush()
+    findTab(t2, '搜书')?.props?.onClick?.()
+    b2.React._reset(); t2 = sec2.C({})
+    await b2.React._flush()
+    const texts = []
+    const wt = (node, depth = 0, seen = new Set()) => {
+      if (typeof node === 'string') { texts.push(node); return }
+      if (node === null || typeof node !== 'object' || depth > 50) return
+      if (Array.isArray(node)) { for (const c of node) wt(c, depth, seen); return }
+      if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); wt(node.type(node.props), depth + 1, seen); return }
+      for (const c of node.children ?? []) wt(c, depth, seen)
+    }
+    wt(t2)
+    const joined = texts.join(' ')
+    ok(joined.includes('旧搜索'), '**重启后恢复上次搜索结果**')
+    ok(joined.includes('旧书'), '结果条目也回来了')
+    ok(joined.includes('清掉结果'), '有「清掉结果」按钮')
   }
 
   console.log(`\n${pass} passed, ${fail} failed`)
@@ -356,6 +472,117 @@ const main = async () => {
     }
     w3(tree2)
     ok(bodies.join(' ').includes('写作槽位') || bodies.length > 0, '停用时落到写作槽位面板')
+  }
+
+  console.log('\n六、阅读器状态持久化')
+  {
+    const store = new Map()
+    const onFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/reader/sources')) return { ok: true, status: 200, json: async () => ({ ok: true, sources: [], count: 0, notice: { origin: 'x', warning: 'y' } }) }
+      if (u.includes('/reader/search')) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, results: [{ title: '某本书', source: '某源', url: '/b/1' }], errors: [], searched: 10 }) }
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+
+    // 先跑一轮，触发搜索
+    const b = loadBundle(store, onFetch)
+    let sec = null
+    b.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec = { sp, C } }, inject: (n, cb) => cb() } })
+    b.React._reset()
+    let tree = sec.C({})
+    await b.React._flush()
+    b.React._reset(); tree = sec.C({}); await b.React._flush()
+
+    // 找到阅读器页签并切过去
+    const findTab = (node, want, depth = 0, seen = new Set()) => {
+      if (typeof node === 'string' || node === null || typeof node !== 'object' || depth > 50) return null
+      if (Array.isArray(node)) { for (const c of node) { const r = findTab(c, want, depth, seen); if (r !== null) return r } return null }
+      if (typeof node.type === 'function') { if (seen.has(node.type)) return null; seen.add(node.type); return findTab(node.type(node.props), want, depth + 1, seen) }
+      if (typeof node.children?.[0] === 'string' && node.children[0] === want && typeof node.props?.onClick === 'function') return node
+      for (const c of node.children ?? []) { const r = findTab(c, want, depth, seen); if (r !== null) return r }
+      return null
+    }
+    const readerTab = findTab(tree, '阅读器')
+    ok(readerTab !== null, '找得到「阅读器」页签按钮')
+    readerTab?.props?.onClick?.()
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    // 切到搜书页签
+    const searchTab = findTab(tree, '搜书')
+    ok(searchTab !== null, '找得到「搜书」子页签')
+    searchTab?.props?.onClick?.()
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    // 触发一次搜索
+    const input = (() => {
+      const out = []
+      const w = (node, depth = 0, seen = new Set()) => {
+        if (node === null || typeof node !== 'object' || depth > 50) return
+        if (Array.isArray(node)) { for (const c of node) w(c, depth, seen); return }
+        if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); w(node.type(node.props), depth + 1, seen); return }
+        if (node.type === 'input') out.push(node)
+        for (const c of node.children ?? []) w(c, depth, seen)
+      }
+      w(tree)
+      return out
+    })()
+    ok(input.length > 0, `搜书页有输入框（${input.length} 个）`)
+    const kwInput = input[0]
+    kwInput?.props?.onChange?.({ target: { value: '雪中悍刀行' } })
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    const searchBtn = findTab(tree, '搜索')
+    ok(searchBtn !== null, '找得到「搜索」按钮')
+    searchBtn?.props?.onClick?.()
+    await new Promise((r) => setTimeout(r, 30))
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+
+    // 落盘了没有
+    const raw = store.get(LS_SEARCH)
+    ok(raw !== undefined && raw !== null, '**搜索结果落盘了**')
+    if (raw !== undefined && raw !== null) {
+      const saved = JSON.parse(raw)
+      ok(saved.keyword === '雪中悍刀行', '记住了关键词')
+      ok(saved.results?.results?.length === 1, '记住了结果')
+      ok(typeof saved.at === 'number', '带时间戳')
+    }
+
+    // 新搜索要清掉旧的：先塞一份旧记录，再渲染，应看不到旧的
+    store.set(LS_SEARCH, JSON.stringify({ keyword: '旧搜索', results: { results: [{ title: '旧书', source: 'x' }] }, at: 1 }))
+    const b2 = loadBundle(store, onFetch)
+    let sec2 = null
+    b2.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec2 = { sp, C } }, inject: (n, cb) => cb() } })
+    b2.React._reset()
+    let t2 = sec2.C({})
+    await b2.React._flush()
+    findTab(t2, '阅读器')?.props?.onClick?.()
+    b2.React._reset(); t2 = sec2.C({})
+    await b2.React._flush()
+    findTab(t2, '搜书')?.props?.onClick?.()
+    b2.React._reset(); t2 = sec2.C({})
+    await b2.React._flush()
+    const texts = []
+    const wt = (node, depth = 0, seen = new Set()) => {
+      if (typeof node === 'string') { texts.push(node); return }
+      if (node === null || typeof node !== 'object' || depth > 50) return
+      if (Array.isArray(node)) { for (const c of node) wt(c, depth, seen); return }
+      if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); wt(node.type(node.props), depth + 1, seen); return }
+      for (const c of node.children ?? []) wt(c, depth, seen)
+    }
+    wt(t2)
+    const joined = texts.join(' ')
+    ok(joined.includes('旧搜索'), '**重启后恢复上次搜索结果**')
+    ok(joined.includes('旧书'), '结果条目也回来了')
+    ok(joined.includes('清掉结果'), '有「清掉结果」按钮')
   }
 
   console.log(`\n${pass} passed, ${fail} failed`)

@@ -349,6 +349,25 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 
 以前每个入口各自 `projectDir ?? 会话 cwd`，结果**换个会话就可能把同一本书写到别处去**。要「后续内容都在工作内容区完成」，得有一个唯一来源，而不是每处各判断一次。
 
+### 记住用哪个目录
+
+设置一次后**记在 `~/.dsh/dsh-writing-slots/workspace.json`**，重启 DSH 自动恢复。
+
+**为什么不写在工作目录自己里面**：那等于把钥匙锁在屋里——下次启动你正是因为不知道屋在哪，才需要这份配置。所以工作目录里那份 `.dsh-writing-slots.json` 记的是**这个目录的元信息**，而「用哪个目录」记在 DSH 主目录。
+
+界面上会显示这个路径是**哪来的**：
+
+| 来源 | 含义 |
+|---|---|
+| `remembered` | 上次记住的（重启后正常就是它） |
+| `set` | 刚手动设的 |
+| `explicit` | 调用时显式传的 |
+| `env` | 环境变量 `DSH_WRITING_WORKSPACE` |
+| `session-cwd` | 会话工作目录 |
+| `default` | 默认落点 `~/dsh-writing` |
+
+记住的目录被删掉或挪走时不会静默回退，会带一个提示说明哪条路径失效了。界面上也有「忘掉」按钮。
+
 ### 标准目录结构
 
 ```
@@ -364,6 +383,13 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 ## 阅读器
 
 从 [dsh-reader](https://github.com/Wodexinhaoleng-Kasssa/dsh-reader)（Apache-2.0）移植。在线搜书、逐章阅读、整本 TXT 下载，也能读工作目录里的本地书。
+
+### 状态会记住
+
+- **搜索结果**：搜完就落盘，切页签、刷新、重启都还在；**新搜索会先清掉旧结果**再写新的。搜书页有「清掉结果」按钮。
+- **阅读进度**：当前书名、目录、读到第几章、最近 20 条消息都会记住，回来接着读。
+
+存在浏览器 localStorage，超配额时静默降级（不会因为存不进就把界面搞崩）。
 
 ### 界面
 
