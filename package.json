@@ -31,5 +31,9 @@
       "platform": "web",
       "inject": []
     }
+  },
+  "dependencies": {
+    "htmlparser2": "^9.1.0",
+    "iconv-lite": "^0.6.3"
   }
 }

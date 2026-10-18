@@ -31,6 +31,8 @@
 ## 四个工具
 
 ```
+reader(action: sources | search | chapters | content | download | local | read | send | notice, ...)
+                                                → 阅读器：搜书、取章节、下载、送进工作目录
 workspace(action: status | set | init | validate, path?)   → 工作目录
 novel_site(action: sites | set-cookie | cookies | fetch | classify | store, ...) → 小说网站
 auto_continue(action: status | enable | disable | configure | rules | models | reset, ...)
@@ -308,7 +310,7 @@ obstacle 抽象（「命运」）        → obstacle_not_concrete
 
 装好并重启后，设置页左侧导航会多一项「**写作槽位**」。
 
-面板顶层有四个页签：**写作槽位**、**工作目录**、**小说网站**（常驻），以及**自动续跑**（只在启用时出现）。
+面板顶层有五个页签：**写作槽位**、**阅读器**、**工作目录**、**小说网站**（常驻），以及**自动续跑**（只在启用时出现）。
 
 写作槽位页签是两栏：
 
@@ -358,6 +360,67 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 ```
 
 `action=init` 建结构，幂等（已存在的目录不动）。
+
+## 阅读器
+
+从 [dsh-reader](https://github.com/Wodexinhaoleng-Kasssa/dsh-reader)（Apache-2.0）移植。在线搜书、逐章阅读、整本 TXT 下载，也能读工作目录里的本地书。
+
+### 界面
+
+章节以**对话消息**呈现，输入框支持指令：
+
+```
+下一章 / 上一章 / 第N章 / 目录 / 下载 / 清屏 / 书架
+拆文 / 样本 / 素材        ← 把当前这章送进工作目录
+<书名>                    ← 直接当搜索词
+```
+
+每条章节消息旁边有三个按钮：**拆**（送拆文库）、**样**（送样本，Style Anchor 语料）、**材**（送素材）。
+
+### 和写作流程打通
+
+这是它比独立阅读器多出来的价值：
+
+| 动作 | 落到哪 | 用途 |
+|---|---|---|
+| 送拆文 | `拆文库/` | 拆结构：信息差、钩子、情绪曲线 |
+| 送样本 | `样本/` | Style Anchor 读它统计文风 |
+| 送素材 | `素材/` | 选题、灵感参考 |
+
+落盘前**先过检查**：字体混淆内容、中文少于 50 字的一律拒绝——**进语料库会污染统计，而且看不出来**。
+
+「本地书」页签同时列两处：工作目录的 `本地书/`（TXT）和 `章节/`（**你自己写的稿子**）。
+
+### 书源的来源与风险
+
+⚠ 内置 41 个书源，规则数据移植自 dsh-reader，其来源是 binbyu/Reader 公开的 `bs.json` / `.bs_bak.json`。
+
+**这些源大多指向第三方聚合站**（笔趣阁系、00shu、12xs、蚂蚁文学、玄幻阁…），上游作者明确声明「注明出处、**严禁非法与商业用途**」。界面里把晋江这类正规平台标 ✅，其余不标注但来源可查。
+
+- 书源随时可能失效（原版 README 同样警告）
+- 取不到时**如实报错**，不伪造内容
+- **不做任何反爬绕过**：引擎就是普通的 `node fetch` + XPath，没有字体还原、没有挑战脚本破解
+- 下载内容仅限个人学习使用，请尊重各站版权
+
+### 引擎
+
+| 模块 | 做什么 |
+|---|---|
+| `lib/reader/xpath.js` | XPath 子集（`//`、`[@attr='v']`、`[position()>1]`、`/@href`、`|`）+ JSON 路径 |
+| `lib/reader/engine.js` | fetch、编码识别（UTF-8/GBK）、规则提取、广告关键词过滤、分页 |
+| `lib/reader/bsdata.js` | 41 个书源数据 |
+| `lib/reader/downloads.js` | 整本下载任务（进度/取消/写盘） |
+| `lib/reader/localbooks.js` | 本地 TXT 扫描 + 按章节标题拆章 |
+| `lib/reader/service.js` | 集成层：接进本插件路由 + 送进工作目录 |
+
+移植时改了一处：本地书默认落点从 `~/dsh-reader-books` 换成工作目录下的 `本地书/`，这样「内容都在工作内容区」对阅读器也成立。
+
+### 自测
+
+```bash
+node verify-reader.mjs          # 76 项，离线（不打扰第三方站点）
+node verify-reader.mjs --net    # 再加在线链路：真去搜一本书、取目录、取正文
+```
 
 ## 小说网站
 
@@ -483,6 +546,8 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 ### 工具
 
 ```
+reader(action: sources | search | chapters | content | download | local | read | send | notice, ...)
+                                                → 阅读器：搜书、取章节、下载、送进工作目录
 workspace(action: status | set | init | validate, path?)   → 工作目录
 novel_site(action: sites | set-cookie | cookies | fetch | classify | store, ...) → 小说网站
 auto_continue(action: status | enable | disable | configure | rules | models | reset, ...)
@@ -499,7 +564,8 @@ node verify-all.mjs      # 一键跑全部
 | `verify.mjs` | 294 | 宿主半 |
 | `verify-continue.mjs` | 126 | 自动续跑（含与原插件的差分比对） |
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
-| `verify-client.mjs` | 37 | 浏览器半 |
+| `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |
+| `verify-client.mjs` | 38 | 浏览器半 |
 
 覆盖：槽位引擎（含循环变量与截断）、统计正确性、对话识别（直角引号）、禁忌清单的 0 命中判据、细纲与前情提要解析（上一章必须严格小于目标章）、审稿契约与隔离（七个维度、四档严重度、非原子指令）、七条去味规则（含「知道」不误报、普通三连不误报）、世界观与人物的结构校验、允许清单、规则 id 与禁忌表对齐、
 读者通道（人格是生活不是参数、HARD_RULE 三禁、越权扫描、允许「没感觉」、三种汇总判断）、

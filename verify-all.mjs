@@ -14,6 +14,7 @@ const SUITES = [
   ['verify.mjs', '宿主半（槽位契约、统计、审稿隔离、去味、故事引擎、读者、确定性检查）'],
   ['verify-continue.mjs', '自动续跑（规则表、退避、换模型、压缩、去抖、上限）'],
   ['verify-sites.mjs', '工作目录与小说网站（cookie 加密、反爬识别、内容分类）'],
+  ['verify-reader.mjs', '阅读器（书源数据、XPath/JSON 规则、编码、拆章、送进工作目录）'],
   ['verify-client.mjs', '浏览器半（渲染、七个槽位、页签随开关显隐）'],
 ]
 
