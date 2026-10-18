@@ -205,6 +205,93 @@ const main = async () => {
     } finally { await rm(ws, { recursive: true, force: true }) }
   }
 
+  console.log('\n六、与槽位的关系')
+  {
+    ok(Object.keys(L.SLOT_KINDS).length >= 12, `槽位映射覆盖 ${Object.keys(L.SLOT_KINDS).length} 个槽位`)
+    ok(L.kindsForSlot('chapter_pack').includes('structure'), 'chapter_pack 用得上结构')
+    ok(L.kindsForSlot('deai_polish').join(',') === 'rule,style', 'deai_polish 只用硬规则与文风')
+    ok(L.kindsForSlot('prose_sanity').join(',') === 'rule', 'prose_sanity 只用硬规则')
+    ok(L.kindsForSlot('不存在的槽位').length === 0, '未知槽位给空表')
+
+    const ws = await tmp()
+    try {
+      await L.put(ws, { kind: 'structure', name: '信息差', body: '每章至少一次信息差变化，必须落在那条被点亮的信息上。' })
+      await L.put(ws, { kind: 'style', name: '短句', body: '句子平均不超过十二字，短句占八成以上。' })
+      await L.put(ws, { kind: 'material', name: '名词表', body: '田息、岁熟、死役牌、按表轮值。' })
+
+      const cp = await L.forSlot(ws, 'chapter_pack')
+      ok(cp.items.length === 3, `chapter_pack 取到 3 条（实际 ${cp.items.length}）`)
+
+      const dp = await L.forSlot(ws, 'deai_polish')
+      ok(dp.items.length === 1 && dp.items[0].kind === 'style', 'deai_polish 只取到文风那条')
+
+      const ps = await L.forSlot(ws, 'prose_sanity')
+      ok(ps.items.length === 0, 'prose_sanity 没规则条目时为空')
+
+      // 给槽位合成
+      const c = await L.composeForSlot(ws, 'chapter_pack')
+      ok(c.ok === true && c.used.length === 3, '给槽位合成全部启用条目')
+      ok(c.slot === 'chapter_pack' && c.poolSize === 3, '返回槽位与池大小')
+      ok(c.text.includes('硬规则') === false || c.text.includes('## '), '合成按类型分组')
+
+      // 只合成勾选的
+      const one = cp.items.filter((x) => x.kind === 'structure').map((x) => x.id)
+      const c2 = await L.composeForSlot(ws, 'chapter_pack', one)
+      ok(c2.used.length === 1, '只合成勾选的')
+
+      // 勾了槽位用不上的条目 → 取不到
+      const styleId = cp.items.find((x) => x.kind === 'style').id
+      const c3 = await L.composeForSlot(ws, 'prose_sanity', [styleId])
+      ok(c3.ok === false, '勾了该槽位用不上的条目 → 报错而不是硬塞')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n七、从工作目录提取素材')
+  {
+    const ws = await tmp()
+    try {
+      const { mkdir } = await import('node:fs/promises')
+      for (const d of ['素材', '拆文库', '样本', '设定']) await mkdir(join(ws, d), { recursive: true })
+
+      const long = '这是一段足够长的正文内容，用来测试提取功能。'.repeat(20)
+      await writeFile(join(ws, '素材', '榜单A.md'), long, 'utf8')
+      await writeFile(join(ws, '拆文库', '某本-第0001章.md'), long, 'utf8')
+      await writeFile(join(ws, '样本', '语料B.md'), long, 'utf8')
+      await writeFile(join(ws, '设定', 'world-bible.md'), long, 'utf8')
+      await writeFile(join(ws, '素材', '太短.md'), '短', 'utf8')
+      await writeFile(join(ws, '素材', '混淆的.md'), '\ue491皇\ue48e辈装。'.repeat(40), 'utf8')
+
+      // dryRun 不写盘
+      const dry = await L.extractFromWorkspace(ws, { dryRun: true })
+      ok(dry.dryRun === true && dry.count === 6, `dryRun 扫到 6 个（实际 ${dry.count}）`)
+      ok((await L.list(ws)).items.length === 0, 'dryRun 不写盘')
+
+      const r = await L.extractFromWorkspace(ws)
+      ok(r.added === 4, `提取 4 条（实际 ${r.added}）`)
+      ok(r.skipped.length === 2, '跳过 2 个（太短 + 混淆）')
+      ok(r.skipped.some((x) => x.reason.includes('太短')), '如实报太短')
+      ok(r.skipped.some((x) => x.reason.includes('混淆')), '如实报混淆')
+
+      const l = await L.list(ws)
+      ok(l.items.length === 4, '库里 4 条')
+      ok(l.items.every((x) => (x.tags ?? []).includes('待整理')), '提取进来的都标「待整理」')
+      ok(l.items.every((x) => x.enabled === false), '**提取进来的默认不参与合成**（原文不是指令）')
+      // 合成时要提示有多少条待整理没算
+      const cc = await L.compose(ws)
+      ok(cc.ok === false, '一条都没启用时合成如实报错')
+      await L.setEnabled(ws, [l.items[0].id], true)
+      const cc2 = await L.compose(ws)
+      ok(cc2.ok === true && cc2.pending === 3, `只算启用的，并提示还有 ${cc2.pending} 条待整理`)
+      ok(cc2.text.includes('待整理'), '待整理提示写进指令里')
+      ok(l.items.some((x) => x.kind === 'structure'), '拆文库那篇归到结构')
+      ok(l.items.some((x) => x.kind === 'style'), '样本那篇归到文风')
+
+      // 再提取一次：已有的不重复加
+      const r2 = await L.extractFromWorkspace(ws)
+      ok(r2.added === 0, '重复提取不重复加')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
   console.log(`\n结果：${pass} passed / ${fail} failed`)
   if (fail > 0) process.exit(1)
 }
