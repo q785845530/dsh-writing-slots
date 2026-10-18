@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 const SUITES = [
   ['verify.mjs', '宿主半（槽位契约、统计、审稿隔离、去味、故事引擎、读者、确定性检查）'],
-  ['verify-continue.mjs', '自动继跑（max-tokens 触发、去抖、上限、通知、运行时开关）'],
+  ['verify-continue.mjs', '自动续跑（规则表、退避、换模型、压缩、去抖、上限）'],
   ['verify-client.mjs', '浏览器半（渲染、七个槽位、页签随开关显隐）'],
 ]
 

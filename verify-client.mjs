@@ -116,7 +116,7 @@ const main = async () => {
     })
   } catch (e) {
     ok(false, `bundle 加载失败：${e.message}`)
-    console.log('\n五、顶层页签与自动继跑')
+    console.log('\n五、顶层页签与自动续跑')
   {
     // 启用时：两个页签
     const onFetch = async (url) => {
@@ -145,7 +145,7 @@ const main = async () => {
     await b1.React._flush()
     seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
     ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
-    ok(tabs1.includes('自动继跑'), '**启用时有「自动继跑」页签**')
+    ok(tabs1.includes('自动续跑'), '**启用时有「自动续跑」页签**')
     ok(tabs1.length === 2, `顶层正好两个页签（实际 ${tabs1.length}）`)
   }
   {
@@ -175,7 +175,7 @@ const main = async () => {
     }
     seen2.clear(); w2(tree2)
     b2.React._reset(); tree2 = sec2.C({}); seen2.clear(); w2(tree2)
-    ok(!tabs2.includes('自动继跑'), '**停用时「自动继跑」页签消失**')
+    ok(!tabs2.includes('自动续跑'), '**停用时「自动续跑」页签消失**')
     ok(tabs2.includes('写作槽位'), '仍保留「写作槽位」页签')
     // 停用时落回写作槽位
     const bodies = []
@@ -277,7 +277,7 @@ const main = async () => {
   ok(all.includes('自动注入'), '显示自动注入槽位')
   ok(all.includes('不代跑模型'), '说明这个面板不代跑模型')
 
-  console.log('\n五、顶层页签与自动继跑')
+  console.log('\n五、顶层页签与自动续跑')
   {
     // 启用时：两个页签
     const onFetch = async (url) => {
@@ -306,7 +306,7 @@ const main = async () => {
     await b1.React._flush()
     seen1.clear(); tabs1.length = 0; b1.React._reset(); tree1 = sec1.C({}); w1(tree1)
     ok(tabs1.includes('写作槽位'), `启用时有「写作槽位」页签（${tabs1.join(' / ')}）`)
-    ok(tabs1.includes('自动继跑'), '**启用时有「自动继跑」页签**')
+    ok(tabs1.includes('自动续跑'), '**启用时有「自动续跑」页签**')
     ok(tabs1.length === 2, `顶层正好两个页签（实际 ${tabs1.length}）`)
   }
   {
@@ -336,7 +336,7 @@ const main = async () => {
     }
     seen2.clear(); w2(tree2)
     b2.React._reset(); tree2 = sec2.C({}); seen2.clear(); w2(tree2)
-    ok(!tabs2.includes('自动继跑'), '**停用时「自动继跑」页签消失**')
+    ok(!tabs2.includes('自动续跑'), '**停用时「自动续跑」页签消失**')
     ok(tabs2.includes('写作槽位'), '仍保留「写作槽位」页签')
     // 停用时落回写作槽位
     const bodies = []

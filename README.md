@@ -31,7 +31,8 @@
 ## 四个工具
 
 ```
-auto_continue(action: status | enable | disable | configure | reset, ...) → 自动继跑的开关与配置
+auto_continue(action: status | enable | disable | configure | rules | models | reset, ...)
+                                                → 自动续跑：规则表、退避、换模型、活动日志
 style_anchor(projectDir?, samples, genreTags?)      → 渲染好的分析提示词 + 可直接落盘的 style-guide.md
 world_builder(projectDir?, genre, validate?)        → 世界观提示词；validate 可校验代价/限制/条数/字数
 character_designer(projectDir?, character, validate?) → 人物卡提示词；validate 可校验六项与三档情绪
@@ -305,7 +306,7 @@ obstacle 抽象（「命运」）        → obstacle_not_concrete
 
 装好并重启后，设置页左侧导航会多一项「**写作槽位**」。
 
-面板顶层是两个页签：**写作槽位**（常驻）与**自动继跑**（只在启用时出现，见下）。
+面板顶层是两个页签：**写作槽位**（常驻）与**自动续跑**（只在启用时出现，见下）。
 
 写作槽位页签是两栏：
 
@@ -331,59 +332,76 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 
 然后重启 DSH。插件目录不在 HMR 监视范围内，改代码必须重启才生效。
 
-## 自动继跑
+## 自动续跑
 
-从 `dsh-auto-continue` 移植进来的。写小说（或其他长输出任务）时，模型一轮输出撞到字数上限（`turn/end` 的 `reason=max-tokens`）被截断，插件自动往**同一个活跃会话**注入「继续写」并唤醒下一轮 —— 不用手动敲「继续」。
+从 `@weibaohui/dsh-continue` 完整移植（原插件是这条赛道上功能最全的）。agent 会话中断后自动续上，不用手敲「继续」。
 
-### 为什么得自己写
+### 核心：有序规则表
 
-- 官方 `@deepseek-ai/dsh-goal-round-driver` 见到 `max-tokens` 会 **disarm**（把「输出被截断」当成需要人工判断的事）
-- 社区 `@weibaohui/dsh-continue` 只处理 `error` / `interrupted`，对 `max-tokens` 明确 `skip`
+**从上到下匹配，先命中先用**。不同失败类型走不同策略：
 
-所以「每章写到上限后接着写」这个场景没人覆盖。
+| 失败类型 | 默认动作 | 说明 |
+|---|---|---|
+| 限流（429） | 继续续跑 | 指数退避，**尊重服务商给的 Retry-After**，最多 5 次 |
+| 额度耗尽 / 余额不足 | 止损通知 | 白重试没意义，立即交回人工 |
+| 鉴权失败（401/403） | 止损通知 | 同上 |
+| 上下文超限 | **压缩上下文后续跑** | 压缩服务**懒解析**；没挂后端就降级为一行通知 |
+| 服务端错误（5xx） | 继续续跑 | |
+| 传输/网络错误 | 继续续跑 | |
+| 崩溃孤儿轮 | 继续续跑 | |
+| 输出截断（max-tokens） | 继续续跑 | 长回复 / 长代码不再停在半截 |
+| 自定义状态码 | 用户指定 | 数字匹配 HTTP 状态码，文字匹配机器码，大小写不敏感 |
+| 任意失败 | 继续续跑 | 兜底 |
+
+**顺序即优先级**：把「自定义状态码」放在「服务端错误」上方，特定码就会先走专属策略。界面上的规则编辑刻意做成一行一条 + 上移下移，因为顺序错了策略就错了。
+
+### 四种动作
+
+- `continue` — 续跑
+- `continue-with` — **换模型**续跑（规则里指定 provider + model；本题连续失败后可切到备用模型）
+- `compact` — 先压缩上下文再续跑
+- `stop` — 止损并通知
+
+### 退避与冷却
+
+`base × 2^attempt`，上限 `backoffMaxMs`，加 0—20% 抖动（让并发重试错开）。限流时取 `max(退避, providerRetryAfterMs)`。
+
+**冷却窗口内到达的失败是推迟，不是丢弃。** 这条容易做错：续跑轮自己的失败几乎必然落在冷却窗口里，丢弃会让会话只续一次就停摆。
 
 ### 客户端页签：停用即隐藏
 
-设置页里是**两个顶层页签**：
+设置页顶层两个页签：**写作槽位**（常驻）与**自动续跑**（只在启用时出现）。
 
-- **写作槽位**（常驻）
-- **自动继跑**（**只在启用时出现**）
+停用后这个页签从界面消失，落回写作槽位。重新启用走 `auto_continue` 工具（`action=enable`）。一个不工作的功能不该占着导航。
 
-停用后这个页签从客户端消失，界面回到写作槽位。要重新启用，用 `auto_continue` 工具（`action=enable`），或改配置重启。
-
-这是刻意的：一个不工作的功能不该占着导航。
-
-### 移植时保留的几处硬约束
-
-这些是原插件踩出来的，一条都不能松：
+### 移植时保留的硬约束
 
 | 约束 | 为什么 |
 |---|---|
-| `source.kind` 必须非空字符串 | 会话准入会拒空 kind。用自己的生产者 kind，不用已移除的 `plugin` 兜底 |
-| `agent.followup(...)` 延到 `setTimeout(0)` | 宿主拒「分发窗口内的重入 append」 |
-| `minGapMs` 去抖 | 一轮里可能有多个 max-tokens 步，不去抖会连发 |
-| `maxFollowupsPerSession`（0=不限） | 防止无限撞顶把额度烧光 |
-| 通知带 `role` 与 `id` + `surfaceOp: 'append'` | 少一样宿主就丢掉（旧版就是这么坏的） |
-| 排除 `subagent` 来源的会话 | 子代理归父代理管，不擅自唤醒 |
+| `source.kind` 非空且自有 | v4 准入拒 `plugin` 兜底 |
+| 通知带 `id` + `role: 'user'` | **少了这两个，写入时静默通过，但整个会话下次加载会拒载**（"lacks an identified message"）。最阴的一条 |
+| `append` 带 `surfaceOp: 'append'` | 不加宿主丢弃 |
+| `followup` 延到分发窗口之外 | 宿主拒重入 append |
+| 压缩服务懒解析（`ctx.get`） | 写进 `inject` 会让本插件在没挂压缩后端的 profile 上永久 pending |
+| 排除 `subagent` 与宿主循环评审会话 | 子代理归父代理管 |
 
-### 比原插件多的两样
+### 移植怎么验的
 
-- **运行时可开关**（页签上的按钮），不用改配置重启 —— 且停用时会**清掉挂起的定时器**，关了不会还投递一次
-- **可见的活动记录**：累计次数、各会话计数、最近活动、上次跳过的原因
+不只跑自己的测试，还用**原插件做差分比对**：
 
-计数是**进程内的实时状态，不落盘**，重启清零。
+- 默认规则表、默认配置 —— **逐字节一致**
+- 失败分类（16 个样例）、`codes` 解析与匹配 —— 一致
+- `decideTurnEnd` 路由决策（16 个场景）—— 一致，包括「限流用尽后回落到 `any` 规则」这种细节
+
+环境里装了原插件就自动比对；干净克隆里没有它，那一节会跳过。
 
 ### 工具
 
 ```
-auto_continue(action: status | enable | disable | configure | reset, prompt?, minGapMs?, maxFollowupsPerSession?, notify?, session?)
+auto_continue(action: status | enable | disable | configure | rules | models | reset, ...)
 ```
 
-### 客户端页签（一）：自动继跑
-
-只在启用时出现。开关 + 配置（注入文本 / 去抖 / 上限 / 通知）+ 累计卡片 + 各会话计数 + 最近活动。
-
-## 自测
+## 自测## 自测
 
 ```bash
 node verify-all.mjs      # 一键跑全部
@@ -392,7 +410,7 @@ node verify-all.mjs      # 一键跑全部
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
 | `verify.mjs` | 294 | 宿主半 |
-| `verify-continue.mjs` | 50 | 自动继跑 |
+| `verify-continue.mjs` | 126 | 自动续跑（含与原插件的差分比对） |
 | `verify-client.mjs` | 35 | 浏览器半 |
 
 覆盖：槽位引擎（含循环变量与截断）、统计正确性、对话识别（直角引号）、禁忌清单的 0 命中判据、细纲与前情提要解析（上一章必须严格小于目标章）、审稿契约与隔离（七个维度、四档严重度、非原子指令）、七条去味规则（含「知道」不误报、普通三连不误报）、世界观与人物的结构校验、允许清单、规则 id 与禁忌表对齐、
