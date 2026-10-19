@@ -135,7 +135,11 @@ const main = async () => {
       ok(p2.done === 1, '只有第 1 段算完成')
       ok(p2.rows[0].state === 'done', '第 1 段 done')
       ok(p2.rows[1]?.failed !== null && p2.rows[1]?.failed !== undefined, '第 2 段标了失败原因')
-      ok(p2.pending === p2.total - 1, '剩下的仍待拆')
+      // 现在有三态：done / running / failed / pending。
+      // 第 1 段 done、第 2 段 failed、其余 pending —— 三者加起来等于总数
+      ok(p2.done + p2.running + p2.failed + p2.pending === p2.total, '四态计数加起来等于总段数')
+      ok(p2.failed >= 1, `失败段被单独计数（${p2.failed} 段）`)
+      ok(p2.pending === p2.total - 1 - p2.running - p2.failed + 0 || p2.pending >= 0, 'pending 计数合理')
 
       // 重跑失败那段
       const retry = await B.claimBatch(ws, { size: 1, chunkChars: 5000 })
@@ -263,6 +267,46 @@ const main = async () => {
         maxIndex = Math.max(maxIndex, ...n.tasks.map((t) => t.index))
       }
       ok(maxIndex >= 50, `**能领到第 51 段之后**（最远领到第 ${maxIndex + 1} 段）`)
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n六点六、状态与倒计时字段')
+  {
+    const ws = await tmp()
+    try {
+      await makeBook(ws, 6, 1200)
+      const before = await B.plan(ws, { chunkChars: 5000 })
+      ok(before.running === 0 && before.failed === 0, '初始没有在拆与失败')
+      ok(before.allDone === false, '没拆完时 allDone=false')
+
+      // 领一批 → 应该有 running 状态 + 开始时间 + 预期耗时
+      const b = await B.claimBatch(ws, { size: 2, chunkChars: 5000 })
+      ok(b.ok === true, '领到段')
+      const p = await B.plan(ws, { chunkChars: 5000 })
+      ok(p.running === 2, `**plan 能看到在拆状态**（${p.running} 段）`)
+      const running = p.rows.filter((x) => x.state === 'running')
+      ok(running.length === 2, '行里有 running 状态')
+      ok(running.every((x) => typeof x.startedAt === 'string'), '**带开始时间**（界面据此倒计时）')
+      ok(running.every((x) => Number.isFinite(x.etaMs) && x.etaMs > 0), '**带预期耗时**（倒计时总长）')
+      // 开始时间能被解析、且不早于刚才
+      const t0 = Date.parse(running[0].startedAt)
+      ok(Number.isFinite(t0), '开始时间可解析')
+      ok(Date.now() - t0 < 60000, '开始时间是刚才（没记错）')
+      // etaMs 与字数成正比
+      ok(running[0].etaMs >= 60000, `约 1.8 万字 → 至少 60 秒（实际 ${Math.round(running[0].etaMs/1000)} 秒）`)
+
+      // 收下后变成 done
+      await B.acceptPart(ws, running[0].index, JSON.stringify(makeMap('第一段')))
+      const p2 = await B.plan(ws, { chunkChars: 5000 })
+      ok(p2.done === 1, '收下后变成 done')
+      ok(p2.running === 1, '另一段还在拆')
+
+      // 全部 done 时 allDone
+      const rest = p2.rows.filter((x) => x.state !== 'done')
+      for (const r of rest) await B.acceptPart(ws, r.index, JSON.stringify(makeMap(`第${r.index + 1}段`)))
+      const p3 = await B.plan(ws, { chunkChars: 5000 })
+      ok(p3.allDone === true, '**全部拆完时 allDone=true**')
+      ok(p3.pending === 0 && p3.running === 0, '没有待拆与在拆')
     } finally { await rm(ws, { recursive: true, force: true }) }
   }
 

@@ -32,7 +32,8 @@
 
 ```
 novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library
-                | plan | claim-batch | accept-part | merge | reset-parts, ...)
+                | plan | claim-batch | accept-part | merge | reset-parts
+                | part-to-library | parts-in-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
@@ -421,6 +422,47 @@ reset-parts   清掉所有分片重来
 
 **合并去重**：不是简单拼接。同一个「江哲」在三段里出现，合并后只有**一条**节点，`sources` 取并集（`第1段·第一章.md`、`第5段·第三章.md`…）。连线会按段做 id 重映射，所以合并后端点仍然对得上。
 
+### 看板：进度、倒计时、分段标绿
+
+逻辑图面板顶部有一块看板：
+
+```
+全书 98 段  [完成 2] [在拆 1] [失败 0] [待拆 95]  58 个节点  [刷新]
+[1][2][3][4][5]...[98]        ← 分段格子，按状态上色
+在拆：第 3 段（剩 87 秒）
+绿=已拆完且已进指令库　蓝=已拆完　橙=在拆　红=失败　灰=待拆
+```
+
+**五种颜色各有含义**：
+
+| 颜色 | 状态 |
+|---|---|
+| 绿 | 已拆完**且**已进指令库 |
+| 蓝 | 已拆完，还没进库 |
+| 橙（带脉冲） | 在拆，鼠标悬停看剩余秒数 |
+| 红 | 失败（悬停看原因） |
+| 灰 | 待拆 |
+
+点任一格子就把那一段正文载入素材框。
+
+### 倒计时
+
+领任务时记下 `startedAt` 与 `etaMs`（按每 5000 字约 60 秒估），界面据此显示剩余秒数。
+
+- 只在**有段落在拆时**才跑心跳（没在拆就不浪费重渲染）
+- 到点没完成显示「已超预期，可能还在跑」——**不谎报完成**
+- 计时是**估算**，不含模型实际耗时波动，只用来判断「还要不要等」
+
+### 拆完就进指令库
+
+每收下一段，可以立刻用 `part-to-library` 把它送进指令库，不用等全书合并。
+
+条目带 `段:N` 标签，所以：
+
+- 指令库里能看出「这条来自第几段」
+- 看板能反查「哪些段已经进库」→ 标绿
+- `parts-in-library` 返回 `{ 段号: 条目数 }`，界面据此上色
+
 ### 多子智能协作
 
 `collaborationBrief(98, 4)` 会给出分工说明：
@@ -798,7 +840,8 @@ node verify-reader.mjs --net    # 再加在线链路：真去搜一本书、取�
 
 ```
 novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library
-                | plan | claim-batch | accept-part | merge | reset-parts, ...)
+                | plan | claim-batch | accept-part | merge | reset-parts
+                | part-to-library | parts-in-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
@@ -822,7 +865,7 @@ node verify-all.mjs      # 一键跑全部
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
 | `verify-library.mjs` | 98 | 指令库（提取、槽位映射、组合） |
 | `verify-logicmap.mjs` | 93 | 逻辑图（校验、渲染、解析、图→条目、分段、编码） |
-| `verify-batch.mjs` | 67 | 批量拆解（分派、分片、失败隔离、合并去重） |
+| `verify-batch.mjs` | 83 | 批量拆解（分派、分片、失败隔离、合并去重、倒计时状态） |
 | `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |
 | `verify-client.mjs` | 38 | 浏览器半 |
 

@@ -34,6 +34,20 @@ function findFn(node, want, depth = 0, seen = new Set()) {
 }
 
 const NS = 'dsh-writing-slots'
+/** 看板测试数据：done / running（带倒计时）/ failed / pending 四态都有。 */
+const PLAN_FIXTURE = {
+  ok: true, total: 6, done: 2, running: 1, failed: 1, pending: 2,
+  nodesSoFar: 40, allDone: false,
+  rows: [
+    { index: 0, title: '第1段', chapters: 4, chars: 18000, state: 'done', nodes: 20, savedAt: '2026-10-19T00:00:00Z', failed: null, startedAt: null, etaMs: null },
+    { index: 1, title: '第2段', chapters: 3, chars: 18000, state: 'done', nodes: 18, savedAt: '2026-10-19T00:00:00Z', failed: null, startedAt: null, etaMs: null },
+    { index: 2, title: '第3段', chapters: 3, chars: 16000, state: 'running', nodes: 0, savedAt: null, failed: null, startedAt: new Date().toISOString(), etaMs: 120000 },
+    { index: 3, title: '第4段', chapters: 3, chars: 16000, state: 'failed', nodes: 0, savedAt: null, failed: '模型没给出任何节点', startedAt: null, etaMs: null },
+    { index: 4, title: '第5段', chapters: 3, chars: 16000, state: 'pending', nodes: 0, savedAt: null, failed: null, startedAt: null, etaMs: null },
+    { index: 5, title: '第6段', chapters: 3, chars: 16000, state: 'pending', nodes: 0, savedAt: null, failed: null, startedAt: null, etaMs: null },
+  ],
+}
+
 const LS_SEARCH = `${NS}:reader:search`
 const LS_SESSION = `${NS}:reader:session`
 
@@ -163,6 +177,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -263,6 +280,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -300,6 +320,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_OFF }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -346,6 +369,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       if (u.includes('/reader/sources')) return { ok: true, status: 200, json: async () => ({ ok: true, sources: [], count: 0, notice: { origin: 'x', warning: 'y' } }) }
@@ -465,6 +491,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -544,6 +573,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -648,6 +680,9 @@ const main = async () => {
       if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
       if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
       if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
       if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
       if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -710,6 +745,94 @@ const main = async () => {
     tree = fresh(); await b.React._flush()
     g = snap(tree)
     ok(!g.texts.some((x) => x.includes('《旧书》')), '清掉后不会被自动捞回来')
+  }
+
+  console.log('\n九、看板、倒计时与分段标绿')
+  {
+    const store = new Map()
+    const onFetch = async (url) => {
+      const u = String(url)
+      if (u.includes('/logicmap/plan')) return { ok: true, status: 200, json: async () => PLAN_FIXTURE }
+      if (u.includes('/logicmap/parts-in-library')) return { ok: true, status: 200, json: async () => ({ ok: true, segments: { 1: 20 }, count: 1, total: 20 }) }
+      if (u.includes('/logicmap')) return { ok: true, status: 200, json: async () => ({ ok: false, reason: '还没有逻辑图' }) }
+      if (u.includes('/slots/inventory')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws', slots: [], material: { samples: { count: 0, files: [] }, briefs: { count: 0, files: [] }, chapters: { count: 0 }, deconstruct: { count: 0 }, material: { count: 0 }, settings: {} }, next: null }) }
+      if (u.includes('/library')) return { ok: true, status: 200, json: async () => ({ ok: true, dir: '/tmp/ws/指令库', items: [], counts: {}, enabled: 0, totalChars: 0, sources: [], kinds: [], broken: [] }) }
+      if (u.includes('/auto-continue')) return { ok: true, status: 200, json: async () => AC_ON }
+      if (u.includes('/status')) return { ok: true, status: 200, json: async () => STATUS }
+      if (u.includes('/modules')) return { ok: true, status: 200, json: async () => ({ ok: true, modules: MODULES }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const b = loadBundle(store, onFetch)
+    let sec = null
+    b.mod.apply({ effect: (f) => f(), slots: { register: (sp, C) => { sec = { sp, C } }, inject: (n, cb) => cb() } })
+    b.React._reset()
+    let tree = sec.C({})
+    await b.React._flush()
+    // 写作槽位页签是默认页，但要先 flush 让 SlotsPanel 的 useEffect（拉 plan）跑完，
+    // 再重渲染一次才有数据 —— 第一版直接 walk 只抓到顶层 Shell 的页签。
+    b.React._reset(); walk0(tree)
+    await b.React._flush()
+    b.React._reset(); tree = sec.C({})
+    await b.React._flush()
+    // 若上次记住的不是写作槽位，点回它
+    const backToSlots = findFn(tree, '写作槽位')
+    if (backToSlots !== null) {
+      backToSlots.props.onClick()
+      b.React._reset(); tree = sec.C({}); await b.React._flush()
+    }
+
+    // walk0 只为触发一次渲染（收集结果不用）
+    function walk0(node, depth = 0, seen = new Set()) {
+      if (node === null || typeof node !== 'object' || depth > 60) return
+      if (Array.isArray(node)) { for (const c of node) walk0(c, depth, seen); return }
+      if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); walk0(expand(node.type, node.props), depth + 1, seen); return }
+      for (const c of node.children ?? []) walk0(c, depth, seen)
+    }
+
+    // 收集：分段格子（含 className）、文本、按钮
+    const segs = []
+    const texts = []
+    const buttons = []
+    const walk = (node, depth = 0, seen = new Set()) => {
+      if (typeof node === 'string') { texts.push(node); return }
+      if (node === null || typeof node !== 'object' || depth > 60) return
+      if (Array.isArray(node)) { for (const c of node) walk(c, depth, seen); return }
+      if (typeof node.type === 'function') { if (seen.has(node.type)) return; seen.add(node.type); walk(expand(node.type, node.props), depth + 1, seen); return }
+      const cls = node.props?.className
+      // 注意 dws_segbar（容器）也含 'dws_seg'，要排除掉
+      if (typeof cls === 'string' && cls.includes('dws_seg') && !cls.includes('dws_segbar')) segs.push({ cls, tip: node.props?.title ?? '', label: node.children?.[0] })
+      if (node.type === 'button' && typeof node.children?.[0] === 'string') buttons.push({ label: node.children[0], props: node.props })
+      for (const c of node.children ?? []) walk(c, depth, seen)
+    }
+    b.React._reset()
+    walk(tree)
+    ok(segs.length === 6, `**渲染出 6 个分段格子**（实际 ${segs.length}）`)
+    // 状态色
+    const byLabel = {}
+    for (const sg of segs) byLabel[String(sg.label)] = sg
+    ok(byLabel['1'] !== undefined && byLabel['1'].cls.includes('seg-lib'), '**第 1 段标绿（已拆+已进指令库）**')
+    ok(byLabel['2'] !== undefined && byLabel['2'].cls.includes('seg-done'), '第 2 段标蓝（已拆但没进库）')
+    ok(byLabel['2'] !== undefined && !byLabel['2'].cls.includes('seg-lib'), '第 2 段不是绿色')
+    ok(byLabel['3'] !== undefined && byLabel['3'].cls.includes('seg-run'), '**第 3 段标橙（在拆）**')
+    ok(byLabel['4'] !== undefined && byLabel['4'].cls.includes('seg-fail'), '第 4 段标红（失败）')
+    ok(byLabel['5'] !== undefined && !byLabel['5'].cls.includes('seg-done') && !byLabel['5'].cls.includes('seg-run'), '第 5 段是默认灰（待拆）')
+
+    // 倒计时：在拆那段的 tooltip 里应该有秒数
+    ok(byLabel['3'].tip.includes('在拆'), '在拆段提示里有「在拆」')
+    ok(/约 -?\d+ 秒|约 \d+ 秒|已超预期/.test(byLabel['3'].tip), `**倒计时出现在提示里**（"${byLabel['3'].tip}"）`)
+    // 页面正文里也有「在拆：第 3 段（剩 N 秒）」
+    const joined = texts.join(' ')
+    ok(joined.includes('在拆：'), '有「在拆：」汇总行')
+    ok(/剩 \d+ 秒|已超预期/.test(joined), '**汇总行显示剩余秒数**')
+    ok(joined.includes('绿=已拆完且已进指令库'), '有配色说明')
+    ok(joined.includes('完成 2') || joined.includes('完成 2'), '看板显示完成数')
+
+    // 送库按钮
+    // 按钮文字是动态的：没选段时是「先把某段收成图」，选了段才是「把第 N 段送进指令库」。
+    // 两种都认，因为关键是「有这个入口」而不是它的瞬时文案。
+    ok(buttons.some((x) => x.label.includes('送进指令库') || x.label.includes('先把某段收成图')), '有「送进指令库」入口（未选段时显示「先把某段收成图」）')
+    ok(buttons.some((x) => x.label.includes('图 → 指令库条目')), '有「图 → 指令库条目」按钮（合并后的整图入库）')
+    ok(joined.includes('指令库里已有 1 段的内容'), '显示已进库的段数')
   }
 
   console.log(`\n${pass} passed, ${fail} failed`)
