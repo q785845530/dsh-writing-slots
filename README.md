@@ -32,7 +32,7 @@
 
 ```
 novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library
-                | plan | claim-batch | accept-part | merge | reset-parts
+                | plan | claim-batch | dispatch | accept-part | merge | reset-parts
                 | part-to-library | parts-in-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | dedupe | kinds, ...)
@@ -476,6 +476,51 @@ reset-parts   清掉所有分片重来
 
 **合并去重**：不是简单拼接。同一个「江哲」在三段里出现，合并后只有**一条**节点，`sources` 取并集（`第1段·第一章.md`、`第5段·第三章.md`…）。连线会按段做 id 重映射，所以合并后端点仍然对得上。
 
+### 分段多选
+
+分段格子**点一下选中、再点取消**，可以多选。选中的加蓝框。
+
+选中后出现批量操作栏：
+
+```
+已选 3 段  5、7、9  [全选] [全不选] [载入第一段正文] [派发给子智能体拆解]
+```
+
+**单击 = 选中**，**双击 = 载入该段正文**（保留原来的快捷方式）。
+
+### 固定的拆文子智能体
+
+`~/.dsh/.agent-presets/novel-deconstructor/` —— 一个**固定 preset**，不是每次临时拼提示词。
+
+为什么要固定：
+
+1. **拆解标准要稳定** —— 98 段由 98 次调用产出，标准一漂合并时全是矛盾
+2. 人格固定后，不同段的判断尺度一致，合并去重才有意义
+3. 每次派发只需给「第几段 + 正文」，不用重复交代规则
+
+它的 `/persona` 里写死了：七类节点、**每个节点必须标出处**、**body 至少 30 字**、
+至少覆盖 world/character/structure、**空结果比编造的好**。
+
+### 派发
+
+勾选若干段 → 点「派发给子智能体拆解」→ 拿到一份派发说明：
+
+```
+# 拆解任务：随波逐流之一代军师.txt
+共派发 3 段。每段交给一个「拆文子智能体」独立拆，互不干扰。
+
+> 一个子智能体只拆一段。让它一次读多段，抽出来的判断标准会漂，
+> 合并时互相矛盾，而且那种矛盾在合并后的图里根本看不出来。
+
+## 第 1 段 ｜ 第一部 南楚状元 序章
+- 正文 18439 字，4 章
+- 取正文：novel_logic_map(action=chunk, chunkIndex=0)
+- 收回产出：novel_logic_map(action=accept-part, index=0, text=<JSON>)
+```
+
+派发时每段立刻标 `running`（界面变橙并开始倒计时），**不会重复派**同一段
+（已拆完和已在拆的都跳过，要重派带 `force`）。
+
 ### 看板：进度、倒计时、分段标绿
 
 逻辑图面板顶部有一块看板：
@@ -918,7 +963,7 @@ node verify-reader.mjs --net    # 再加在线链路：真去搜一本书、取�
 
 ```
 novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library
-                | plan | claim-batch | accept-part | merge | reset-parts
+                | plan | claim-batch | dispatch | accept-part | merge | reset-parts
                 | part-to-library | parts-in-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | dedupe | kinds, ...)
@@ -943,7 +988,7 @@ node verify-all.mjs      # 一键跑全部
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
 | `verify-library.mjs` | 125 | 指令库（提取、槽位映射、组合、去重） |
 | `verify-logicmap.mjs` | 93 | 逻辑图（校验、渲染、解析、图→条目、分段、编码） |
-| `verify-batch.mjs` | 83 | 批量拆解（分派、分片、失败隔离、合并去重、倒计时状态） |
+| `verify-batch.mjs` | 99 | 批量拆解（分派、多选派发、分片、失败隔离、合并去重） |
 | `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |
 | `verify-client.mjs` | 38 | 浏览器半 |
 

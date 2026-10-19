@@ -310,6 +310,50 @@ const main = async () => {
     } finally { await rm(ws, { recursive: true, force: true }) }
   }
 
+  console.log('\n六点七、按勾选派发（多选）')
+  {
+    const ws = await tmp()
+    try {
+      await makeBook(ws, 8, 1200)
+      const p = await B.plan(ws, { chunkChars: 5000 })
+      ok(p.total >= 4, `切成 ${p.total} 段`)
+
+      // 派发指定的几段
+      const r = await B.dispatchSelected(ws, [0, 2], { chunkChars: 5000 })
+      ok(r.ok === true, '派发成功')
+      ok(r.claimed === 2, `派发 2 段（实际 ${r.claimed}）`)
+      ok(r.tasks.length === 2, 'tasks 数量对')
+      ok(r.payloads.length === 2, '**payloads 带了正文**（可直接交给子智能体）')
+      ok(r.payloads.every((x) => x.text.length > 0), '每段都有正文')
+      ok(r.brief.includes('一个子智能体只拆一段'), '**派发说明里强调了一人一段**')
+      ok(r.brief.includes('第 1 段') && r.brief.includes('第 3 段'), '说明里列出派发的段')
+      ok(r.brief.includes('accept-part'), '说明里给了收回方式')
+
+      // 派发后变 running
+      const p2 = await B.plan(ws, { chunkChars: 5000 })
+      ok(p2.running === 2, `派发后 2 段在拆（实际 ${p2.running}）`)
+
+      // 重复派发会被跳过
+      const r2 = await B.dispatchSelected(ws, [0], { chunkChars: 5000 })
+      ok(r2.ok === false, '已派发的段不再重复派（除非 force）')
+      // 刚派发过的段状态是 running，所以跳过原因会是「已在拆」而不是「已拆完」
+      ok(r2.skipped.some((x) => /已拆完|已在拆/.test(x.reason)), `如实说跳过原因（${r2.skipped.map((x) => x.reason).join('；')}）`)
+
+      // force 可以重派
+      const r3 = await B.dispatchSelected(ws, [0], { chunkChars: 5000, force: true })
+      ok(r3.ok === true && r3.claimed === 1, 'force=true 能重派')
+
+      // 越界段号
+      const r4 = await B.dispatchSelected(ws, [999], { chunkChars: 5000 })
+      ok(r4.ok === false, '越界段号不派')
+      ok(r4.skipped.some((x) => x.reason.includes('越界')), '报越界')
+
+      // 空选择
+      const r5 = await B.dispatchSelected(ws, [], { chunkChars: 5000 })
+      ok(r5.ok === false && r5.reason.includes('没有选中'), '没选段时如实报')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
   console.log('\n七、协作说明')
   {
     const b = B.collaborationBrief(98, 4)
