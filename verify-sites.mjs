@@ -213,6 +213,55 @@ const main = async () => {
     } finally { await rm(root, { recursive: true, force: true }) }
   }
 
+  console.log('\n一·四、工作目录失效不能永久回退（真机踩到的）')
+  {
+    const root = await tmp()
+    const oldHome = process.env.DSH_HOME
+    process.env.DSH_HOME = root
+    try {
+      const W = await import('./lib/workspace.js')
+      const ws = join(root, 'my-book')
+      await mkdir(ws, { recursive: true })
+      await W.saveGlobal({ workspace: ws })
+
+      // 1. 可写时校验通过
+      let v = await W.validate(ws)
+      ok(v.ok === true && v.writable === true, '可写目录校验通过')
+      ok(v.details.length === 0, '没问题时不带细节')
+
+      // 2. 不可写时要**带出真实原因**，不能只说「不可写」
+      const ro = join(root, 'readonly')
+      await mkdir(ro, { recursive: true })
+      const { chmod } = await import('node:fs/promises')
+      await chmod(ro, 0o500)   // 只读
+      if (process.getuid?.() === 0) {
+        // root 无视权限位，这条在容器里跳过
+        console.log('    （以 root 运行，跳过只读测试）')
+      } else {
+        v = await W.validate(ro)
+        ok(v.ok === false, '只读目录校验失败')
+        ok(v.problems.some((x) => x.includes('不可写')), '报出不可写')
+        ok((v.details ?? []).length > 0, '**带出细节**（第一版只说「不可写」，查不出原因）')
+        ok(JSON.stringify(v.details).includes('EACCES') || JSON.stringify(v.details).includes('code'), '细节里有错误码')
+      }
+      await chmod(ro, 0o700).catch(() => {})
+
+      // 3. cleanup 失败不能被当成「不可写」
+      //    （旧实现把 writeFile 与 unlink 放同一个 try，unlink 抛错就误报）
+      v = await W.validate(ws)
+      ok(v.ok === true, '写探针清理失败不影响「可写」判断')
+
+      // 4. 不存在的路径
+      v = await W.validate(join(root, 'nope'))
+      ok(v.ok === false && v.problems.some((x) => x.includes('不存在')), '不存在的路径如实报')
+      ok((v.details ?? []).length > 0, '不存在也带细节')
+    } finally {
+      if (oldHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = oldHome
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
   console.log('\n二、cookie 是凭据')
   {
     const key = Buffer.alloc(32, 7)

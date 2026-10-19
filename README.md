@@ -355,6 +355,27 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 
 以前每个入口各自 `projectDir ?? 会话 cwd`，结果**换个会话就可能把同一本书写到别处去**。要「后续内容都在工作内容区完成」，得有一个唯一来源，而不是每处各判断一次。
 
+### 记住的路径失效时怎么办
+
+界面会**明说原因**，并在工作目录页签给出「重新检查记住的路径」按钮 —— 目录恢复可用就切回去，**不用重启**。
+
+失效时显示的是真实错误，不是一句「不可写」：
+
+```
+记住的工作目录不可用：/home/wsn/文档/dsh/本地演示/novels/插件目录拆解
+· 这个目录不可写：EACCES permission denied ...
+  尝试写 .dsh-write-probe-12345 失败，code=EACCES
+  目录可读，有 44 个条目
+现在临时用：~/projects/deepseek-harness（来源 session-cwd）
+```
+
+**两个真踩到的坑**（都是这个「不可写」引起的）：
+
+1. **写探针的 cleanup 失败被当成「不可写」**：旧实现把 `writeFile` 与 `unlink` 放同一个 `try`，`unlink` 抛错就误报。目录明明可写，却被判死。
+2. **失效会永久定格**：旧实现只在第一次调用时检查记住的路径，一旦那次失败，`workspaceDir` 就被钉成 session-cwd，之后即使目录恢复也**永远回不去** —— 界面表现就是「指令库一直是空的」，而且没有任何提示。
+
+现在：记住的路径**每次调用都重试**，恢复可用就自动切回。
+
 ### 记住用哪个目录
 
 设置一次后**记在 `~/.dsh/dsh-writing-slots/workspace.json`**，重启 DSH 自动恢复。
