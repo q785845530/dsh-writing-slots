@@ -325,19 +325,20 @@ const main = async () => {
       ok(r.tasks.length === 2, 'tasks 数量对')
       ok(r.payloads.length === 2, '**payloads 带了正文**（可直接交给子智能体）')
       ok(r.payloads.every((x) => x.text.length > 0), '每段都有正文')
-      ok(r.brief.includes('一个子智能体只拆一段'), '**派发说明里强调了一人一段**')
+      // 现在派发返回的是「可粘贴指令」，一人一段的强调在 README 与 preset 里，
+      // 指令本身给出的是每段的取正文/交回命令
+      ok(r.brief.includes('novel_logic_map'), '派发返回可粘贴指令')
       ok(r.brief.includes('第 1 段') && r.brief.includes('第 3 段'), '说明里列出派发的段')
       ok(r.brief.includes('accept-part'), '说明里给了收回方式')
 
-      // 派发后变 running
+      // 派发后标 pending-task（不是 running —— 插件自己不调模型）
       const p2 = await B.plan(ws, { chunkChars: 5000 })
-      ok(p2.running === 2, `派发后 2 段在拆（实际 ${p2.running}）`)
+      ok(p2.running === 0, '派发后不标 running（假状态）')
+      ok(p2.pendingTask === 2, `派发后 2 段是 pending-task（实际 ${p2.pendingTask}）`)
 
-      // 重复派发会被跳过
+      // 已拆完的段会被跳过
       const r2 = await B.dispatchSelected(ws, [0], { chunkChars: 5000 })
-      ok(r2.ok === false, '已派发的段不再重复派（除非 force）')
-      // 刚派发过的段状态是 running，所以跳过原因会是「已在拆」而不是「已拆完」
-      ok(r2.skipped.some((x) => /已拆完|已在拆/.test(x.reason)), `如实说跳过原因（${r2.skipped.map((x) => x.reason).join('；')}）`)
+      ok(r2.ok === true, 'pending-task 的段允许再生成一份指令（换会话重跑是合法的）')
 
       // force 可以重派
       const r3 = await B.dispatchSelected(ws, [0], { chunkChars: 5000, force: true })
@@ -351,6 +352,56 @@ const main = async () => {
       // 空选择
       const r5 = await B.dispatchSelected(ws, [], { chunkChars: 5000 })
       ok(r5.ok === false && r5.reason.includes('没有选中'), '没选段时如实报')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n六点八、可粘贴指令（插件不自己调模型）')
+  {
+    const ws = await tmp()
+    try {
+      await makeBook(ws, 8, 1200)
+      const p = await B.plan(ws, { chunkChars: 5000 })
+      ok(p.total >= 3, `切成 ${p.total} 段`)
+
+      // 生成可粘贴指令
+      const c = await B.composeAction(ws, [0, 1], { chunkChars: 5000 })
+      ok(c.ok === true, '能生成指令')
+      ok(c.count === 2, '覆盖 2 段')
+      ok(c.text.length > 500, `指令有实质内容（${c.text.length} 字）`)
+
+      // 指令里必须自带「怎么取正文、怎么交回、规则是什么」
+      ok(c.text.includes('novel_logic_map(action=chunk'), '**自带取正文的命令**')
+      ok(c.text.includes('novel_logic_map(action=accept-part'), '**自带交回的命令**')
+      ok(c.text.includes('chunkIndex=0') && c.text.includes('chunkIndex=1'), '每段的 index 都对')
+      ok(c.text.includes('world') && c.text.includes('character') && c.text.includes('structure'), '七类节点规则在')
+      ok(c.text.includes('至少 30 字'), '硬要求写进去了')
+      ok(c.text.includes('必须标 `sources`') || c.text.includes('必须标 sources'), '**要求标出处**')
+      ok(c.text.includes('不要凑数写空话'), '禁止凑数')
+      ok(c.text.includes('"nodes"') && c.text.includes('"edges"'), '输出格式示例在')
+      ok(c.hint.includes('复制') && c.hint.includes('对话框'), '说明怎么用')
+
+      // dispatch 不再标假 running
+      const d = await B.dispatchSelected(ws, [2], { chunkChars: 5000 })
+      ok(d.ok === true, '派发成功')
+      ok(d.brief.includes('novel_logic_map'), '派发返回的也是可粘贴指令')
+      const p2 = await B.plan(ws, { chunkChars: 5000 })
+      ok(p2.running === 0, '**不再标假 running**（插件自己不调模型）')
+      ok(p2.pendingTask === 1, `标成 pending-task（人等拿去跑，实际 ${p2.pendingTask}）`)
+
+      // resetStuck 清掉旧的假 running
+      const part = await B.loadPart(ws, 2)
+      ok(part.state === 'pending-task', '分片状态是 pending-task')
+      // 手动造一个假的 running
+      await B.savePart(ws, 3, { state: 'running', startedAt: new Date().toISOString(), etaMs: 1000, title: '假在拆' })
+      const rs = await B.resetStuck(ws)
+      ok(rs.cleared === 1, `清掉 1 个卡住的（实际 ${rs.cleared}）`)
+      ok(await B.loadPart(ws, 3) === null, '卡住的分片被删了')
+      // pending-task 不该被清
+      ok(await B.loadPart(ws, 2) !== null, '**pending-task 不会被误清**（那不是卡住）')
+
+      // 空选择
+      const c2 = await B.composeAction(ws, [], { chunkChars: 5000 })
+      ok(c2.ok === false && c2.reason.includes('没有选中'), '没选段时如实报')
     } finally { await rm(ws, { recursive: true, force: true }) }
   }
 
