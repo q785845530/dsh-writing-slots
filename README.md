@@ -31,7 +31,8 @@
 ## 四个工具
 
 ```
-novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library, ...)
+novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library
+                | plan | claim-batch | accept-part | merge | reset-parts, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
@@ -400,6 +401,38 @@ dsh plugin --profile web add link:/path/to/dsh-writing-slots
 存进指令库，当后续写作的真实素材库
 ```
 
+### 整本书并发拆解
+
+98 段一段一段手跑不现实。所以有**分派 + 分片 + 合并**：
+
+```
+plan          看板：哪几段完成、还差几段
+claim-batch   领一批（默认 4 段，上限 20）——每段自包含，可直接给一个子智能
+accept-part   收某段的结果（index=N）
+merge         合并成全书的图
+reset-parts   清掉所有分片重来
+```
+
+**分片存储**：`设定/逻辑图分片/第NNNN段.json`，一段一个文件。
+
+- 中断能续：重启后 `plan` 一眼看出哪几段完成了
+- 失败能重跑：坏 JSON 也存档（标 `failed`），`claim-batch` 会重新派它
+- 并行不互相覆盖：每段独立文件
+
+**合并去重**：不是简单拼接。同一个「江哲」在三段里出现，合并后只有**一条**节点，`sources` 取并集（`第1段·第一章.md`、`第5段·第三章.md`…）。连线会按段做 id 重映射，所以合并后端点仍然对得上。
+
+### 多子智能协作
+
+`collaborationBrief(98, 4)` 会给出分工说明：
+
+```
+全书 98 段，每次并发 4 段，共 25 批。
+每个子智能只拆自己领到的那几段，产出的 JSON 单独贴回来 ——
+不要一个子智能读多段（上下文会串味，不同段的判断标准会漂移）。
+```
+
+**「一个子智能只拆一段」是硬要求**。让它一次读多段，抽出来的标准会漂，合并时互相矛盾——那种矛盾在合并后的图里根本看不出来，只会让整张图变得不可信。
+
 ### 整本小说怎么处理
 
 一本 54 万字的小说塞不进一次提示词，所以有**分段**：
@@ -764,7 +797,8 @@ node verify-reader.mjs --net    # 再加在线链路：真去搜一本书、取�
 ### 工具
 
 ```
-novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library, ...)
+novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | to-library
+                | plan | claim-batch | accept-part | merge | reset-parts, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
 instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
@@ -788,6 +822,7 @@ node verify-all.mjs      # 一键跑全部
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
 | `verify-library.mjs` | 98 | 指令库（提取、槽位映射、组合） |
 | `verify-logicmap.mjs` | 93 | 逻辑图（校验、渲染、解析、图→条目、分段、编码） |
+| `verify-batch.mjs` | 67 | 批量拆解（分派、分片、失败隔离、合并去重） |
 | `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |
 | `verify-client.mjs` | 38 | 浏览器半 |
 

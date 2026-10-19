@@ -842,7 +842,7 @@ const main = async () => {
 
   console.log('\n七、模板与契约自洽')
   {
-    ok(MODULES.length === 9, `九个模块（实际 ${MODULES.length}）`)
+    ok(MODULES.length === 10, `十个模块（实际 ${MODULES.length}）`)
     ok(UPSTREAM_MODULES.length === 3, '上游模块三个：文风 / 世界观 / 人物')
     for (const m of MODULES) {
       const { slots } = collectSlots(m.template)
