@@ -312,6 +312,39 @@ obstacle 抽象（「命运」）        → obstacle_not_concrete
 
 改完在 50 章真稿上只剩 3 处命中，且**都是真问题**。
 
+### 标题栏与返回
+
+每个页签都有自己的**标题 + 说明 + 面包屑**，左上角有「← 返回」：
+
+```
+[← 返回]   指令库                                 设置 › 写作槽位 › 指令库
+           勾选条目，组合成最终写作指令
+```
+
+- 返回走**历史栈**（最近 10 页），不是简单回首页
+- 在写作槽位且无历史时按钮置灰
+- 当前页签记在 localStorage，下次打开接着用
+
+### 一个只有真机才暴露的 bug
+
+点「指令库」时**整个面板消失**。原因：
+
+```js
+const [lib, setLib] = useState(null)
+...
+if (lib === null) return h('div', ...)   // ← 提前返回
+const doCompose = useCallback(...)       // ← hook 在它后面
+```
+
+第一次渲染数据还没到 → 提前返回，跳过 `doCompose`；数据到了 → 多一个 hook。
+React 抛 **#310（Rendered more hooks than during the previous render）**，并**卸载整个组件树**。
+
+单测和 mock 渲染都测不出来——mock 的 `useState` 不校验 hook 数量。
+
+现在 `verify-client.mjs` 第十节会静态扫描：任何组件「提前返回之后还有 hook」都会被打回。
+
+**教训**：组件里 `if (...) return` 之前必须放完所有 hook。这是我的错，而且只有真开浏览器才看得见。
+
 ## 设置页面板
 
 装好并重启后，设置页左侧导航会多一项「**写作槽位**」。

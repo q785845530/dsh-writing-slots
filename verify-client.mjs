@@ -835,6 +835,46 @@ const main = async () => {
     ok(joined.includes('指令库里已有 1 段的内容'), '显示已进库的段数')
   }
 
+  console.log('\n十、hook 顺序（React #310 的根因）')
+  {
+    // 规则：组件里「提前 return」之后不能再有 hook。
+    // 违反时 React 第一次渲染（数据还没到）与第二次渲染（数据到了）的 hook
+    // 数量不同，直接抛 #310 并**卸载整个组件树** —— 界面一片空白。
+    //
+    // 真机表现：点「指令库」页签 → 整个面板消失。单测与 mock 渲染都测不出来，
+    // 因为 mock 的 useState 不校验 hook 数量。
+    const src = readFileSync(join(here, 'lib', 'client.js'), 'utf8')
+    const offenders = []
+    const re = /\n    function ([A-Z]\w+)\(/g
+    let m
+    const marks = []
+    while ((m = re.exec(src)) !== null) marks.push({ name: m[1], start: m.index })
+    for (let k = 0; k < marks.length; k += 1) {
+      const from = marks[k].start
+      const to = k + 1 < marks.length ? marks[k + 1].start : src.length
+      const blk = src.slice(from, to)
+      const lines = blk.split('\n')
+      let early = -1
+      for (let n = 0; n < lines.length; n += 1) {
+        if (/^\s*if \(.*\) return h\(/.test(lines[n])) { early = n; break }
+      }
+      if (early < 0) continue
+      for (let n = early + 1; n < lines.length; n += 1) {
+        if (/^\s*(const \w+ = )?use(Callback|State|Effect|Memo)\(/.test(lines[n])) {
+          offenders.push(`${marks[k].name}:第${n + 1}行`)
+        }
+      }
+    }
+    ok(offenders.length === 0, `没有「提前 return 之后还有 hook」的组件${offenders.length > 0 ? '（' + offenders.join('，') + '）' : ''}`)
+
+    // 顺便验：LibraryPanel 的 doCompose 必须在提前 return 之前
+    const libIdx = src.indexOf('function LibraryPanel()')
+    const libBlk = src.slice(libIdx, src.indexOf('\n    function ', libIdx + 20))
+    const composePos = libBlk.indexOf('const doCompose = useCallback(')
+    const earlyPos = libBlk.indexOf('if (lib === null) return')
+    ok(composePos > 0 && earlyPos > 0 && composePos < earlyPos, 'LibraryPanel 的 doCompose 在提前 return 之前')
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`)
   if (fail > 0) process.exit(1)
 }
