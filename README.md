@@ -35,7 +35,7 @@ novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | t
                 | plan | claim-batch | accept-part | merge | reset-parts
                 | part-to-library | parts-in-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
-instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
+instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | dedupe | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
 reader(action: sources | search | chapters | content | download | local | read | send | notice, ...)
                                                 → 阅读器：搜书、取章节、下载、送进工作目录
@@ -610,6 +610,30 @@ reset-parts   清掉所有分片重来
 
 这两个需求不同，一开始我混在一起，结果同类型条目顺序随机。分开之后各归各。
 
+### 去重：按内容身份，不按 id
+
+条目的身份是**「类型 + 归一化名字」**，不是 id。
+
+id 带时间戳与随机后缀，每次导入都不一样——拿它判重等于每次都认为「这是新条目」。
+
+**这是我踩过最贵的一个坑**：第一版导入时「已存在就换个 id 存新的」，逻辑图重导几次之后，**191 条里 147 条是重复的**（同一个「江哲」存了 7 份）。
+
+现在三种策略（`onDuplicate`）：
+
+| 策略 | 行为 |
+|---|---|
+| `update`（默认） | 同内容就更新已有条目，标签与出处取并集，正文保留更长的 |
+| `skip` | 已有就跳过 |
+| `new` | 强制存成副本（只在明确要一份副本时用） |
+
+`dedupe` 可以清理历史重复：保留**信息最全**的那条（正文最长 → 标签最多 → 更新时间最新），把其余条目的标签与出处并进去再删。
+
+### 提取也要去重
+
+提取按**文件名**判重，不按「来源目录 + 名字」。
+
+同一篇原文常同时躺在 `素材/` `拆文库/` `样本/` 里（我先放素材，又复制一份到样本），按目录判会被提取三次，得到三条同内容的条目。
+
 ### 存储
 
 `<工作目录>/指令库/<id>.json`，**一条一个文件**。
@@ -843,7 +867,7 @@ novel_logic_map(action: extract | chunks | chunk | decompose | accept | read | t
                 | plan | claim-batch | accept-part | merge | reset-parts
                 | part-to-library | parts-in-library, ...)
                                                 → 素材 → 子智能拆解 → 逻辑图 → 指令库
-instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | kinds, ...)
+instruction_library(action: list | mine | import | add | patch | remove | enable | reorder | compose | dedupe | kinds, ...)
                                                 → 指令库：沉淀、勾选、组合成最终写作指令
 reader(action: sources | search | chapters | content | download | local | read | send | notice, ...)
                                                 → 阅读器：搜书、取章节、下载、送进工作目录
@@ -863,7 +887,7 @@ node verify-all.mjs      # 一键跑全部
 | `verify.mjs` | 294 | 宿主半 |
 | `verify-continue.mjs` | 126 | 自动续跑（含与原插件的差分比对） |
 | `verify-sites.mjs` | 104 | 工作目录与小说网站 |
-| `verify-library.mjs` | 98 | 指令库（提取、槽位映射、组合） |
+| `verify-library.mjs` | 125 | 指令库（提取、槽位映射、组合、去重） |
 | `verify-logicmap.mjs` | 93 | 逻辑图（校验、渲染、解析、图→条目、分段、编码） |
 | `verify-batch.mjs` | 83 | 批量拆解（分派、分片、失败隔离、合并去重、倒计时状态） |
 | `verify-reader.mjs` | 76 | 阅读器（离线；`--net` 加在线链路） |

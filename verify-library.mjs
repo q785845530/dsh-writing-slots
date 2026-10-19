@@ -98,11 +98,19 @@ const main = async () => {
       ok(r.added === 2, `导入 2 条（实际 ${r.added}）`)
       ok(r.items.every((x) => typeof x.name === 'string'), '返回导入的清单')
 
-      // 不覆盖：重复导入换 id 存成新条目
+      // 重复导入同一批：现在是**更新**，不再复制一份
       const r2 = await L.importItems(ws, JSON.parse(clean), { source: '雪中悍刀行' })
-      ok(r2.added === 2, '重复导入也进（不悄悄改旧的）')
+      ok(r2.updated === 2 && r2.added === 0, '重复导入同一批是更新而非新增')
       const l = await L.list(ws)
-      ok(l.items.length === 4, `共 4 条（实际 ${l.items.length}）`)
+      ok(l.items.length === 2, `共 2 条（实际 ${l.items.length}）`)
+
+      // 明确要副本时才复制
+      const r2b = await L.importItems(ws, JSON.parse(clean), { source: '雪中悍刀行', onDuplicate: 'new' })
+      ok(r2b.added === 2, "onDuplicate='new' 时才复制副本")
+      const l2 = await L.list(ws)
+      ok(l2.items.length === 4, `副本进来后共 4 条（实际 ${l2.items.length}）`)
+      // 清掉刚造的副本，后面的计数断言才成立
+      for (const it of l2.items.slice(2)) await L.remove(ws, it.id)
 
       // 无效条目被跳过并报原因
       const r3 = await L.importItems(ws, [{ name: '缺正文' }, { kind: 'rule', name: '好的', body: '这是一条足够长的指令正文，用来验证跳过逻辑是否只跳过坏的。' }])
@@ -289,6 +297,118 @@ const main = async () => {
       // 再提取一次：已有的不重复加
       const r2 = await L.extractFromWorkspace(ws)
       ok(r2.added === 0, '重复提取不重复加')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+
+  console.log('\n八、重复问题（真机 191 条里 147 条是重复的）')
+  {
+    // 内容身份：同类型同名字算同一条，不看 id
+    const k1 = L.itemKey({ kind: 'character', name: '江哲（字随云）：表面欲望是苟全性命' })
+    const k2 = L.itemKey({ kind: 'character', name: '江哲(字随云): 表面欲望是苟全性命' })
+    ok(k1 === k2, '**名字写法不同也认作同一条**（去空白与标点）')
+    ok(L.itemKey({ kind: 'character', name: '江哲' }) !== L.itemKey({ kind: 'style', name: '江哲' }), '类型不同算不同条目')
+
+    const ws = await tmp()
+    try {
+      const item = { kind: 'character', name: '江哲', body: '表面欲望是苟全性命，真实需求是被看见。这是一段足够长的正文。', source: '第1段' }
+
+      // 第一次导入
+      const r1 = await L.importItems(ws, [item], { source: '第1段' })
+      ok(r1.added === 1 && r1.updated === 0, '首次导入是新增')
+      ok((await L.list(ws)).items.length === 1, '库里 1 条')
+
+      // 第二次导入同样内容 —— 必须更新而不是新增
+      const r2 = await L.importItems(ws, [item], { source: '第1段' })
+      ok(r2.added === 0 && r2.updated === 1, '**重复导入是更新，不是新增**')
+      ok((await L.list(ws)).items.length === 1, '**库里仍然 1 条**（第一版这里会变成 2 条）')
+
+      // 导入十次还是 1 条
+      for (let i = 0; i < 10; i += 1) await L.importItems(ws, [item], { source: '第1段' })
+      ok((await L.list(ws)).items.length === 1, '导入十次仍然 1 条')
+
+      // 标签取并集：不同段导入同一节点，段号不能丢
+      // 两段导出同一节点时，source 不同（一个来自第1段，一个来自第5段）
+      const withSeg1 = { ...item, tags: ['段:1'], source: '第1段·第一章' }
+      const withSeg5 = { ...item, tags: ['段:5'], source: '第5段·第三章' }
+      // 不传 options.source —— normalize 里 options.source 优先，会把条目自带的
+      // source 覆盖掉，合并时两边就「看起来一样」，并集失效
+      await L.importItems(ws, [withSeg1], {})
+      await L.importItems(ws, [withSeg5], {})
+      const one = (await L.list(ws)).items[0]
+      ok(one.tags.includes('段:1') && one.tags.includes('段:5'), `**标签取并集，两段标记都在**（${one.tags.join(',')}）`)
+      ok(one.source.includes('第1段') && one.source.includes('第5段'), '出处也取并集')
+
+      // 已启用的不会被新导入关掉
+      await L.patch(ws, one.id, { enabled: true })
+      await L.importItems(ws, [{ ...item, enabled: false }], { source: '第1段' })
+      ok((await L.list(ws)).items[0].enabled === true, '已启用的条目不会被再次导入关掉')
+
+      // onDuplicate: 'new' 明确要副本时才复制
+      const r3 = await L.importItems(ws, [item], { source: '第1段', onDuplicate: 'new' })
+      ok(r3.added === 1, "onDuplicate='new' 时才新增副本")
+      ok((await L.list(ws)).items.length === 2, '库里 2 条')
+      // onDuplicate: 'skip' 跳过
+      const r4 = await L.importItems(ws, [item], { source: '第1段', onDuplicate: 'skip' })
+      ok(r4.added === 0 && r4.updated === 0, "onDuplicate='skip' 时既不新增也不更新")
+      ok((await L.list(ws)).items.length === 2, '库里还是 2 条')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+  {
+    // dedupe：清掉已有重复，保留信息最全的
+    const ws = await tmp()
+    try {
+      const { mkdir } = await import('node:fs/promises')
+      await mkdir(L.libDir(ws), { recursive: true })
+      // 手动造 5 条同内容不同 id 的条目（模拟第一版产生的重复）
+      const mk = (id, extra) => ({ id, kind: 'character', name: '江哲', body: '正文。'.repeat(30), summary: 's', source: '第1段', enabled: true, tags: ['逻辑图'], order: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...extra })
+      // 注意：不要用 [['a',{}],...].entries() —— 那样 extra 拿到的是字符串 'a'，
+      // spread 出去全乱。直接用对象数组。
+      const extras = [
+        {},
+        { tags: ['逻辑图', '段:1'] },
+        { body: '正文。'.repeat(50) },   // 正文最长，应该被保留
+        { tags: ['逻辑图', '段:2'] },
+        { source: '第5段' },
+      ]
+      for (let i = 0; i < extras.length; i += 1) {
+        const it = mk(`dup-${i}`, extras[i])
+        await writeFile(join(L.libDir(ws), `${it.id}.json`), JSON.stringify(it), 'utf8')
+      }
+      const before = await L.list(ws)
+      ok(before.items.length === 5, `造了 5 条重复（${before.items.length}）`)
+
+      const dry = await L.dedupe(ws, { dryRun: true })
+      ok(dry.removed === 4, `dryRun 报告会清 4 条（实际 ${dry.removed}）`)
+      ok((await L.list(ws)).items.length === 5, 'dryRun 不动文件')
+
+      const r = await L.dedupe(ws)
+      ok(r.removed === 4, '清掉 4 条')
+      const after = await L.list(ws)
+      ok(after.items.length === 1, '**只剩 1 条**')
+      // 保留的是正文最长的
+      ok(after.items[0].body.length === '正文。'.repeat(50).length, '**保留正文最长的那条**（信息最全）')
+      // 标签与出处合并了
+      ok(after.items[0].tags.includes('段:1') && after.items[0].tags.includes('段:2'), '**标签合并了，段号没丢**')
+      ok(after.items[0].source.includes('第5段'), '出处也合并了')
+
+      // 再跑一次：没有重复可说
+      const r2 = await L.dedupe(ws)
+      ok(r2.removed === 0 && r2.message === '没有重复', '已无重复时如实报')
+    } finally { await rm(ws, { recursive: true, force: true }) }
+  }
+  {
+    // 提取去重：同一篇原文在多个目录里不该被提取多次
+    const ws = await tmp()
+    try {
+      const { mkdir } = await import('node:fs/promises')
+      for (const d of ['素材', '拆文库', '样本']) await mkdir(join(ws, d), { recursive: true })
+      const content = '这是一篇足够长的原文内容，用来测试提取去重。'.repeat(30)
+      // 同名文件放在三个目录
+      for (const d of ['素材', '拆文库', '样本']) await writeFile(join(ws, d, '同一篇.md'), content, 'utf8')
+
+      const r = await L.extractFromWorkspace(ws)
+      ok(r.added === 1, `**同名文件只提取一次**（实际 ${r.added} 条）`)
+      ok((await L.list(ws)).items.length === 1, '库里只有 1 条')
     } finally { await rm(ws, { recursive: true, force: true }) }
   }
 
